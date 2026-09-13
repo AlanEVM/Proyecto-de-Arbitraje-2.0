@@ -1,0 +1,539 @@
+﻿@page "/reporte"
+@attribute [Authorize(Roles = "Admin")]
+@using Microsoft.AspNetCore.Authorization
+@using ProyectoArbitraje.Data
+@using ProyectoArbitraje.Models
+@using ProyectoArbitraje.Services
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<TorneoContext> DbFactory
+@inject TorneoActualService TorneoActual
+@inject ExportService ExportSvc
+@inject IJSRuntime JS
+
+<PageTitle>Reporte Final</PageTitle>
+
+@if (TorneoActual.TorneoId == null)
+{
+    <div class="pagina">
+        <p class="vacio">No hay un torneo activo. <a href="">Ve a Inicio</a> y entra a uno primero.</p>
+    </div>
+    return;
+}
+
+<div class="pagina">
+    <div class="tarjeta-marcador pagina-header">
+        <h1>Reporte Final - @TorneoActual.NombreTorneo</h1>
+        <div style="margin-top:12px;">
+            <button class="btn btn-primary" @onclick="DescargarExcel" disabled="@generandoExcel">
+                @(generandoExcel ? "Generando..." : "Descargar Excel del torneo")
+            </button>
+            <button class="btn btn-ghost" @onclick="DescargarPdfPuntos" disabled="@generandoPdfPuntos">
+                @(generandoPdfPuntos ? "Generando..." : "Generar hojas de puntuación (PDF)")
+            </button>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrEmpty(mensajePdfPuntos))
+    {
+        <p class="mensaje-error">@mensajePdfPuntos</p>
+    }
+
+    @if (!string.IsNullOrEmpty(mensajeExcel))
+    {
+        <p class="mensaje-error">@mensajeExcel</p>
+    }
+
+    @if (resultados == null)
+    {
+        <p class="vacio">Cargando...</p>
+    }
+    else if (!resultados.Any())
+    {
+        <p class="vacio">Todavía no hay ninguna categoría finalizada en este torneo.</p>
+    }
+    else
+    {
+        @foreach (var cat in resultados)
+        {
+            <div class="tarjeta">
+                <h2>@cat.NombreCategoria</h2>
+
+                @if (cat.Campeon != null)
+                {
+                    <div class="resultado-fila">
+                        <span class="resultado-puesto campeon">🏆 Campeón</span>
+                        <span class="resultado-nombres">@cat.Campeon.Nombres <span class="nota">(@cat.Campeon.Municipio)</span></span>
+                    </div>
+                }
+                @if (cat.Subcampeon != null)
+                {
+                    <div class="resultado-fila">
+                        <span class="resultado-puesto subcampeon">Subcampeón</span>
+                        <span class="resultado-nombres">@cat.Subcampeon.Nombres <span class="nota">(@cat.Subcampeon.Municipio)</span></span>
+                    </div>
+                }
+                @if (cat.Semifinalistas.Any())
+                {
+                    <div class="resultado-fila">
+                        <span class="resultado-puesto otro">Semifinalistas</span>
+                        <div class="resultado-nombres">
+                            @foreach (var entrada in cat.Semifinalistas)
+                            {
+                                <div>@entrada.Nombres <span class="nota">(@entrada.Municipio)</span></div>
+                            }
+                        </div>
+                    </div>
+                }
+                @if (cat.Cuartofinalistas.Any())
+                {
+                    <div class="resultado-fila">
+                        <span class="resultado-puesto otro">Cuartofinalistas</span>
+                        <div class="resultado-nombres">
+                            @foreach (var entrada in cat.Cuartofinalistas)
+                            {
+                                <div>@entrada.Nombres <span class="nota">(@entrada.Municipio)</span></div>
+                            }
+                        </div>
+                    </div>
+                }
+                @if (cat.Octavofinalistas.Any())
+                {
+                    <div class="resultado-fila">
+                        <span class="resultado-puesto otro">Octavofinalistas</span>
+                        <div class="resultado-nombres">
+                            @foreach (var entrada in cat.Octavofinalistas)
+                            {
+                                <div>@entrada.Nombres <span class="nota">(@entrada.Municipio)</span></div>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+    }
+
+    <hr class="cancha-divider" />
+
+    <div class="tarjeta">
+        <h2>Ver más detalle de una categoría</h2>
+        <p class="nota">Aquí puedes revisar la misma información que trae el Excel (atletas, calendario, posiciones y ranking otorgado), pero de una categoría a la vez.</p>
+
+        @if (categoriasParaDetalle != null)
+        {
+            <div class="campo" style="max-width:400px;">
+                <select @bind="categoriaDetalleId" @bind:after="CargarDetalleCategoria">
+                    <option value="0">-- Selecciona categoría --</option>
+                    @foreach (var c in categoriasParaDetalle)
+                    {
+                        <option value="@c.Id">@c.Nombre - @c.Modalidad - @c.Rama</option>
+                    }
+                </select>
+            </div>
+        }
+    </div>
+
+    @if (categoriaDetalleActiva != null)
+    {
+        string etiqueta = categoriaDetalleActiva.Modalidad == "Dobles" ? "Pareja" : "Atleta";
+
+        <div class="tarjeta">
+            <h3>Atletas</h3>
+            @if (detalleAtletas == null || !detalleAtletas.Any())
+            {
+                <p class="vacio">Sin atletas registrados.</p>
+            }
+            else
+            {
+                <table class="tabla-limpia">
+                    <thead>
+                        <tr><th>Nombre</th><th>Municipio</th><th>Género</th><th>Año</th><th>Grupo</th><th>Estado</th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var a in detalleAtletas)
+                        {
+                            <tr>
+                                <td>@a.Nombre</td>
+                                <td>@a.Municipio</td>
+                                <td>@a.Genero</td>
+                                <td>@a.Anio</td>
+                                <td>@a.Grupo</td>
+                                <td><span class="badge @(a.Activo ? "badge-jugado" : "badge-baja")">@(a.Activo ? "Activo" : "Baja")</span></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+
+        <div class="tarjeta">
+            <h3>Calendario</h3>
+            @if (detallePartidos == null || !detallePartidos.Any())
+            {
+                <p class="vacio">Sin partidos generados.</p>
+            }
+            else
+            {
+                <table class="tabla-limpia">
+                    <thead>
+                        <tr>
+                            <th>Fase</th>
+                            <th>Grupo/Banda</th>
+                            @if (categoriaDetalleActiva.Formato == "Jornadas")
+                            {
+                                <th>Jornada</th>
+                            }
+                            <th>@etiqueta A</th>
+                            <th>@etiqueta B</th>
+                            <th>Set 1</th>
+                            @if (!detalleUnSoloSet)
+                            {
+                                <th>Set 2</th>
+                                <th>Set 3</th>
+                            }
+                            <th>Ganador</th>
+                            <th>Cancha</th>
+                            <th>Fecha</th>
+                            <th>Estado</th>
+                            <th>Capturó</th>
+                            <th>Corregido por</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var p in detallePartidos)
+                        {
+                            <tr>
+                                <td>@p.Fase</td>
+                                <td>@p.GrupoBanda</td>
+                                @if (categoriaDetalleActiva.Formato == "Jornadas")
+                                {
+                                    <td>@p.Jornada</td>
+                                }
+                                <td>@p.NombreA</td>
+                                <td>@p.NombreB</td>
+                                <td>@p.Set1</td>
+                                @if (!detalleUnSoloSet)
+                                {
+                                    <td>@p.Set2</td>
+                                    <td>@p.Set3</td>
+                                }
+                                <td>@p.Ganador</td>
+                                <td>@p.Cancha</td>
+                                <td>@p.Fecha</td>
+                                <td>@p.Estado</td>
+                                <td>@p.CapturadoPor</td>
+                                <td>@p.CorregidoPor</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+
+        <div class="tarjeta">
+            <h3>Ranking otorgado</h3>
+            @if (detalleRanking == null || !detalleRanking.Any())
+            {
+                <p class="vacio">Esta categoría todavía no otorgó ranking.</p>
+            }
+            else
+            {
+                <table class="tabla-limpia">
+                    <thead>
+                        <tr><th>Atleta</th><th>Posición</th><th>Puntos</th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var r in detalleRanking)
+                        {
+                            <tr>
+                                <td>@r.Nombre</td>
+                                <td>@r.Posicion</td>
+                                <td>@r.Puntos</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private List<ReporteCategoria>? resultados;
+    private bool generandoExcel;
+    private string mensajeExcel = "";
+
+    private List<Categoria>? categoriasParaDetalle;
+    private int categoriaDetalleId;
+    private Categoria? categoriaDetalleActiva;
+    private List<AtletaDetalleFila>? detalleAtletas;
+    private List<PartidoDetalleFila>? detallePartidos;
+    private List<RankingDetalleFila>? detalleRanking;
+    private bool detalleUnSoloSet;
+
+    private class PodioEntrada
+    {
+        public string Nombres { get; set; } = "";
+        public string Municipio { get; set; } = "";
+    }
+
+    private class ReporteCategoria
+    {
+        public string NombreCategoria { get; set; } = "";
+        public PodioEntrada? Campeon { get; set; }
+        public PodioEntrada? Subcampeon { get; set; }
+        public List<PodioEntrada> Semifinalistas { get; set; } = new();
+        public List<PodioEntrada> Cuartofinalistas { get; set; } = new();
+        public List<PodioEntrada> Octavofinalistas { get; set; } = new();
+    }
+
+    private class AtletaDetalleFila
+    {
+        public string Nombre { get; set; } = "";
+        public string Municipio { get; set; } = "";
+        public string Genero { get; set; } = "";
+        public string Anio { get; set; } = "";
+        public string Grupo { get; set; } = "";
+        public bool Activo { get; set; }
+    }
+
+    private class PartidoDetalleFila
+    {
+        public string Fase { get; set; } = "";
+        public string GrupoBanda { get; set; } = "";
+        public string Jornada { get; set; } = "";
+        public string NombreA { get; set; } = "";
+        public string NombreB { get; set; } = "";
+        public string Set1 { get; set; } = "";
+        public string Set2 { get; set; } = "";
+        public string Set3 { get; set; } = "";
+        public string Ganador { get; set; } = "";
+        public string Cancha { get; set; } = "";
+        public string Fecha { get; set; } = "";
+        public string Estado { get; set; } = "";
+        public string CapturadoPor { get; set; } = "";
+        public string CorregidoPor { get; set; } = "";
+    }
+
+    private class RankingDetalleFila
+    {
+        public string Nombre { get; set; } = "";
+        public int Posicion { get; set; }
+        public int Puntos { get; set; }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (TorneoActual.TorneoId == null) return;
+
+        using var db = await DbFactory.CreateDbContextAsync();
+        var torneoId = TorneoActual.TorneoId!.Value;
+
+        categoriasParaDetalle = await db.Categorias.Where(c => c.TorneoId == torneoId).ToListAsync();
+
+        var integrantes = await db.CompetidorIntegrantes
+            .Where(ci => ci.Competidor.Categoria.TorneoId == torneoId)
+            .Select(ci => new { ci.AtletaId, ci.CompetidorId, ci.Competidor.CategoriaId })
+            .ToListAsync();
+
+        var competidorIdPorAtletaCategoria = integrantes
+            .ToDictionary(x => (x.AtletaId, x.CategoriaId), x => x.CompetidorId);
+
+        var historial = await db.RankingHistorials
+            .Where(r => r.TorneoId == torneoId)
+            .Include(r => r.Categoria)
+            .Include(r => r.Atleta).ThenInclude(a => a.Municipio)
+            .ToListAsync();
+
+        resultados = new List<ReporteCategoria>();
+
+        foreach (var catGroup in historial.GroupBy(r => r.Categoria))
+        {
+            var categoria = catGroup.Key;
+
+            var porCompetidor = catGroup
+                .GroupBy(r => competidorIdPorAtletaCategoria.GetValueOrDefault((r.AtletaId, categoria.Id), -r.AtletaId))
+                .Select(g => new
+                {
+                    Posicion = g.First().Posicion,
+                    Entrada = new PodioEntrada
+                    {
+                        Nombres = string.Join(" / ", g.Select(r => r.Atleta.Nombre)),
+                        Municipio = g.First().Atleta.Municipio?.Nombre ?? ""
+                    }
+                })
+                .ToList();
+
+            resultados.Add(new ReporteCategoria
+            {
+                NombreCategoria = $"{categoria.Nombre} · {categoria.Modalidad} · {categoria.Rama}",
+                Campeon = porCompetidor.FirstOrDefault(x => x.Posicion == 1)?.Entrada,
+                Subcampeon = porCompetidor.FirstOrDefault(x => x.Posicion == 2)?.Entrada,
+                Semifinalistas = porCompetidor.Where(x => x.Posicion == 3).Select(x => x.Entrada).ToList(),
+                Cuartofinalistas = porCompetidor.Where(x => x.Posicion == 5).Select(x => x.Entrada).ToList(),
+                Octavofinalistas = porCompetidor.Where(x => x.Posicion == 9).Select(x => x.Entrada).ToList(),
+            });
+        }
+
+        resultados = resultados.OrderBy(r => r.NombreCategoria).ToList();
+    }
+
+    private async Task CargarDetalleCategoria()
+    {
+        detalleAtletas = null; detallePartidos = null; detalleRanking = null; detalleUnSoloSet = false;
+
+        if (categoriaDetalleId == 0) { categoriaDetalleActiva = null; return; }
+
+        using var db = await DbFactory.CreateDbContextAsync();
+        categoriaDetalleActiva = categoriasParaDetalle!.First(c => c.Id == categoriaDetalleId);
+
+        var competidores = await db.Competidores
+            .Where(c => c.CategoriaId == categoriaDetalleId)
+            .Include(c => c.Grupo)
+            .Include(c => c.CompetidorIntegrantes).ThenInclude(ci => ci.Atleta).ThenInclude(a => a.Municipio)
+            .ToListAsync();
+
+        detalleAtletas = new List<AtletaDetalleFila>();
+        foreach (var c in competidores)
+        {
+            detalleAtletas.Add(new AtletaDetalleFila
+            {
+                Nombre = string.Join(" / ", c.CompetidorIntegrantes.Select(ci => ci.Atleta.Nombre)),
+                Municipio = string.Join(" / ", c.CompetidorIntegrantes.Select(ci => ci.Atleta.Municipio?.Nombre ?? "").Distinct()),
+                Genero = string.Join(" / ", c.CompetidorIntegrantes.Select(ci => ci.Atleta.Genero ?? "")),
+                Anio = string.Join(" / ", c.CompetidorIntegrantes.Select(ci => ci.Atleta.AnioNacimiento?.ToString() ?? "")),
+                Grupo = c.Grupo?.Letra ?? "",
+                Activo = c.Activo
+            });
+        }
+
+        var config = await db.Configuracions.FirstOrDefaultAsync(cfg => cfg.CategoriaId == categoriaDetalleId);
+        detalleUnSoloSet = config?.ModalidadSets == "1 Set";
+
+        var ordenFase = new Dictionary<string, int>
+        {
+            ["Final"] = 0,
+            ["Semifinal"] = 1,
+            ["Cuartos"] = 2,
+            ["Octavos"] = 3,
+            ["Dieciseisavos"] = 4,
+            ["Grupos"] = 5,
+            ["Liga"] = 5
+        };
+
+        var partidos = await db.Partidos
+            .Where(p => p.CategoriaId == categoriaDetalleId)
+            .Include(p => p.Grupo)
+            .Include(p => p.Cancha)
+            .Include(p => p.CompetidorA).ThenInclude(c => c.CompetidorIntegrantes).ThenInclude(ci => ci.Atleta)
+            .Include(p => p.CompetidorB).ThenInclude(c => c.CompetidorIntegrantes).ThenInclude(ci => ci.Atleta)
+            .Include(p => p.SetsPartidos)
+            .ToListAsync();
+
+        partidos = partidos
+            .OrderBy(p => ordenFase.GetValueOrDefault(p.Fase, 9))
+            .ThenBy(p => p.FechaCaptura ?? DateTime.MaxValue)
+            .ThenBy(p => p.OrdenCola)
+            .ToList();
+
+        detallePartidos = partidos.Select(p =>
+        {
+            string nombreA = string.Join(" / ", p.CompetidorA.CompetidorIntegrantes.Select(ci => ci.Atleta.Nombre));
+            string nombreB = string.Join(" / ", p.CompetidorB.CompetidorIntegrantes.Select(ci => ci.Atleta.Nombre));
+            var sets = p.SetsPartidos.OrderBy(s => s.NumeroSet).ToList();
+
+            return new PartidoDetalleFila
+            {
+                Fase = p.Fase,
+                GrupoBanda = p.Grupo?.Letra ?? (p.Banda?.ToString() ?? ""),
+                Jornada = p.Jornada?.ToString() ?? "",
+                NombreA = nombreA,
+                NombreB = nombreB,
+                Set1 = p.EsDefault ? "WO" : (sets.Count > 0 ? $"{sets[0].PuntosA}-{sets[0].PuntosB}" : ""),
+                Set2 = sets.Count > 1 ? $"{sets[1].PuntosA}-{sets[1].PuntosB}" : "",
+                Set3 = sets.Count > 2 ? $"{sets[2].PuntosA}-{sets[2].PuntosB}" : "",
+                Ganador = p.GanadorId == p.CompetidorAid ? nombreA : (p.GanadorId == p.CompetidorBid ? nombreB : ""),
+                Cancha = p.Cancha?.Numero.ToString() ?? "",
+                Fecha = p.FechaCaptura?.ToString("dd/MM HH:mm") ?? "",
+                Estado = p.Estado,
+                CapturadoPor = p.CapturadoPor ?? "",
+                CorregidoPor = !string.IsNullOrEmpty(p.CorregidoPor)
+                    ? $"{p.CorregidoPor} (antes: {p.MarcadorAnterior}, el {p.FechaCorreccion:dd/MM HH:mm})"
+                    : ""
+            };
+        }).ToList();
+
+        var historialCat = await db.RankingHistorials
+            .Where(r => r.CategoriaId == categoriaDetalleId && r.TorneoId == TorneoActual.TorneoId)
+            .Include(r => r.Atleta)
+            .OrderBy(r => r.Posicion)
+            .ToListAsync();
+
+        detalleRanking = historialCat.Select(r => new RankingDetalleFila
+        {
+            Nombre = r.Atleta.Nombre,
+            Posicion = r.Posicion,
+            Puntos = r.Puntos
+        }).ToList();
+    }
+
+    private async Task DescargarExcel()
+    {
+        mensajeExcel = "";
+        generandoExcel = true;
+
+        try
+        {
+            var torneoId = TorneoActual.TorneoId!.Value;
+            var bytes = await ExportSvc.GenerarExcelTorneoAsync(torneoId);
+
+            string nombreLimpio = string.Join("_", TorneoActual.NombreTorneo!.Split(System.IO.Path.GetInvalidFileNameChars()));
+            string nombreArchivo = $"{nombreLimpio}_{DateTime.Now:yyyyMMdd_HHmm}.xlsx";
+
+            using var streamRef = new DotNetStreamReference(new MemoryStream(bytes));
+            await JS.InvokeVoidAsync("downloadFileFromStream", nombreArchivo, streamRef);
+        }
+        catch (Exception ex)
+        {
+            mensajeExcel = $"Error al generar el Excel: {ex.Message}";
+        }
+        finally
+        {
+            generandoExcel = false;
+        }
+    }
+
+    private bool generandoPdfPuntos;
+    private string mensajePdfPuntos = "";
+
+    private async Task DescargarPdfPuntos()
+    {
+        mensajePdfPuntos = "";
+        generandoPdfPuntos = true;
+
+        try
+        {
+            var torneoId = TorneoActual.TorneoId!.Value;
+            var bytes = await ExportSvc.GenerarPdfHojasPuntuacionAsync(torneoId);
+
+            if (bytes == null)
+            {
+                mensajePdfPuntos = "Ningún partido de este torneo se capturó punto por punto, no hay nada que generar.";
+                return;
+            }
+
+            string nombreLimpio = string.Join("_", TorneoActual.NombreTorneo!.Split(System.IO.Path.GetInvalidFileNameChars()));
+            string nombreArchivo = $"{nombreLimpio}_HojasPuntuacion_{DateTime.Now:yyyyMMdd_HHmm}.pdf";
+
+            using var streamRef = new DotNetStreamReference(new MemoryStream(bytes));
+            await JS.InvokeVoidAsync("downloadFileFromStream", nombreArchivo, streamRef);
+        }
+        catch (Exception ex)
+        {
+            mensajePdfPuntos = $"Error al generar el PDF: {ex.Message}";
+        }
+        finally
+        {
+            generandoPdfPuntos = false;
+        }
+    }
+}

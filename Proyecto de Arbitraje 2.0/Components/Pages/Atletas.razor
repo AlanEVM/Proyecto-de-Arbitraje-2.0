@@ -1,0 +1,180 @@
+﻿@page "/atletas"
+@using Microsoft.AspNetCore.Authorization
+@using ProyectoArbitraje.Data
+@using ProyectoArbitraje.Models
+@using ProyectoArbitraje.Services
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<TorneoContext> DbFactory
+@inject TorneoActualService TorneoActual
+
+<PageTitle>Atletas</PageTitle>
+
+@if (TorneoActual.TorneoId == null)
+{
+    <div class="pagina">
+        <p class="vacio">No hay un torneo activo. <a href="">Ve a Inicio</a> y entra a uno primero.</p>
+    </div>
+    return;
+}
+
+<div class="pagina">
+    <div class="tarjeta-marcador pagina-header">
+        <h1>Atletas - @TorneoActual.NombreTorneo</h1>
+        <p class="pagina-subtitulo">Vista completa de todos los competidores del torneo, por categoría y grupo.</p>
+    </div>
+
+    <div class="tarjeta">
+        @if (categorias == null)
+        {
+            <p class="vacio">Cargando...</p>
+        }
+        else if (!categorias.Any())
+        {
+            <p class="vacio">Aún no hay categorías creadas.</p>
+        }
+        else
+        {
+            @foreach (var cat in categorias.OrderBy(c => c.Nombre).ThenBy(c => c.Modalidad).ThenBy(c => c.Rama))
+            {
+                var competidoresCat = (todos ?? new()).Where(c => c.CategoriaId == cat.Id).ToList();
+                string claseFormatoCat = cat.Formato switch
+                {
+                    "GruposFaseFinal" => "badge-formato-grupos",
+                    "Jornadas" => "badge-formato-jornadas",
+                    _ => "badge-formato-eliminatoria"
+                };
+
+                <div class="subtarjeta" style="margin-bottom:16px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                        <strong>@cat.Nombre · @cat.Modalidad · @cat.Rama</strong>
+                        <span class="badge @claseFormatoCat">@cat.Formato</span>
+                    </div>
+
+                    @if (!competidoresCat.Any())
+                    {
+                        <p class="vacio">Sin atletas registrados.</p>
+                    }
+                    else if (cat.Formato == "GruposFaseFinal")
+                    {
+                        <div class="grupos-horizontal">
+                            @foreach (var letraGrupo in competidoresCat.Where(c => c.Letra != null).Select(c => c.Letra).Distinct().OrderBy(l => l))
+                            {
+                                <div class="grupo-columna">
+                                    <h4>Grupo @letraGrupo</h4>
+                                    @foreach (var at1 in competidoresCat.Where(c => c.Letra == letraGrupo))
+                                    {
+                                        <div class="grupo-columna-atleta">
+                                            <div>
+                                                @at1.NombreAtleta 
+                                                @if (!at1.Activo)
+                                                {
+                                                    <span class="badge badge-baja" style="margin-left: 4px;">Baja</span>
+                                                }
+                                            </div>
+                                            <div class="nota" style="font-size:0.8rem;">
+                                                @at1.NombreMunicipio
+                                            </div>
+                                        </div>
+                                    }
+                                </div>
+                            }
+
+                            @if (competidoresCat.Any(c => c.Letra == null))
+                            {
+                                <div class="grupo-columna">
+                                    <h4>Sin grupo</h4>
+                                    @foreach (var at1 in competidoresCat.Where(c => c.Letra == null))
+                                    {
+                                        <div class="grupo-columna-atleta">
+                                            <div>
+                                                @at1.NombreAtleta
+                                                @if (!at1.Activo)
+                                                {
+                                                    <span class="badge badge-baja" style="margin-left:4px;">Baja</span>
+                                                }
+                                            </div>
+                                            <div class="nota" style="font-size:0.8rem;">
+                                                @at1.NombreMunicipio
+                                            </div>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <table class="tabla-limpia">
+                            <thead>
+                                <tr>
+                                    <th>Nombre</th>
+                                    <th>Municipio</th>
+                                    <th>Estado</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var at1 in competidoresCat)
+                                {
+                                    <tr>
+                                        <td>@at1.NombreAtleta</td>
+                                        <td>@at1.NombreMunicipio</td>
+                                        <td><span class="badge @(at1.Activo ? "badge-jugado" : "badge-baja")">@(at1.Activo ? "Activo" : "Baja")</span></td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    }
+                </div>
+            }
+        }
+    </div>
+</div>
+
+@code {
+    private List<Categoria>? categorias;
+    private List<CompetidorFila>? todos;
+
+    private class CompetidorFila
+    {
+        public int CategoriaId { get; set; }
+        public string NombreAtleta { get; set; } = "";
+        public string NombreMunicipio { get; set; } = "";
+        public string? Letra { get; set; }
+        public bool Activo { get; set; }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (TorneoActual.TorneoId == null) return;
+
+        using var db = await DbFactory.CreateDbContextAsync();
+        var torneoId = TorneoActual.TorneoId!.Value;
+
+        categorias = await db.Categorias.Where(c => c.TorneoId == torneoId).ToListAsync();
+
+        var datos = await db.Competidores
+            .Where(c => c.Categoria.TorneoId == torneoId)
+            .Select(c => new
+            {
+                c.CategoriaId,
+                c.Activo,
+                GrupoLetra = c.Grupo != null ? c.Grupo.Letra : null,
+                Integrantes = c.CompetidorIntegrantes.Select(ci => new
+                {
+                    ci.Atleta.Nombre,
+                    MunicipioNombre = ci.Atleta.Municipio.Nombre
+                }).ToList()
+            })
+            .ToListAsync();
+
+        todos = datos.Select(d => new CompetidorFila
+            {
+                CategoriaId = d.CategoriaId,
+                NombreAtleta = string.Join(" / ", d.Integrantes.Select(i => i.Nombre)),
+                NombreMunicipio = string.Join(" / ", d.Integrantes.Select(i => i.MunicipioNombre)),
+                Letra = d.GrupoLetra,
+                Activo = d.Activo
+            }).ToList();
+    }
+}
+

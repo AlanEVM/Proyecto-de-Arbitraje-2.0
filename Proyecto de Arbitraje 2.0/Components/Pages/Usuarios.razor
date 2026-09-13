@@ -1,0 +1,191 @@
+﻿@page "/usuarios"
+@attribute [Authorize(Roles = "Admin")]
+@using ProyectoArbitraje.Data
+@using ProyectoArbitraje.Models
+@using ProyectoArbitraje.Services
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<TorneoContext> DbFactory
+
+<PageTitle>Usuarios</PageTitle>
+
+<div class="pagina">
+    <div class="tarjeta-marcador pagina-header">
+        <h1>Usuarios</h1>
+        <p class="pagina-subtitulo">Administra las cuentas de acceso al sistema.</p>
+    </div>
+
+    <div class="tarjeta">
+        @if (usuarios == null)
+        {
+            <p class="vacio">Cargando...</p>
+        }
+        else
+        {
+            <table class="tabla-limpia">
+                <thead>
+                    <tr>
+                        <th>Usuario</th>
+                        <th>Rol</th>
+                        <th>Estado</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var u in usuarios)
+                    {
+                        <tr>
+                            <td>@u.NombreUsuario</td>
+                            <td>@u.Rol</td>
+                            <td><span class="badge @(u.Activo ? "badge-jugado" : "badge-baja")">@(u.Activo ? "Activo" : "Inactivo")</span></td>
+                            <td class="col-accion">
+                                <button class="btn btn-ghost" @onclick="() => AlternarActivo(u.Id)">@(u.Activo ? "Desactivar" : "Activar")</button>
+                                <button class="btn btn-ghost" @onclick="() => AbrirCambioPassword(u.Id)">Cambiar contraseña</button>
+                            </td>
+                        </tr>
+                        @if (usuarioCambiandoPasswordId == u.Id)
+                        {
+                            <tr>
+                                <td colspan="4">
+                                    <div class="subtarjeta" style="display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap;">
+                                        <div class="campo" style="max-width:220px; margin-bottom:0;">
+                                            <label>Nueva contraseña</label>
+                                            <input type="password" @bind="nuevaPassword" />
+                                        </div>
+                                        <button class="btn btn-primary" @onclick="() => GuardarNuevaPassword(u.Id)">Guardar</button>
+                                        <button class="btn btn-ghost" @onclick="() => usuarioCambiandoPasswordId = null">Cancelar</button>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+
+    <hr class="cancha-divider" />
+
+    <div class="tarjeta">
+        <h2>Nuevo usuario</h2>
+
+        <div class="campos-fila">
+            <div class="campo" style="max-width:220px;">
+                <label>Usuario</label>
+                <input @bind="nuevoNombre" />
+            </div>
+            <div class="campo" style="max-width:220px;">
+                <label>Contraseña</label>
+                <input type="password" @bind="nuevoPassword" />
+            </div>
+            <div class="campo" style="max-width:160px;">
+                <label>Rol</label>
+                <select @bind="nuevoRol">
+                    <option value="Admin">Admin</option>
+                    <option value="Arbitro">Árbitro</option>
+                </select>
+            </div>
+            <button class="btn btn-primary" @onclick="CrearUsuario">Crear</button>
+        </div>
+
+        @if (!string.IsNullOrEmpty(mensaje))
+        {
+            <p class="@(esExito ? "mensaje-exito" : "mensaje-error")">@mensaje</p>
+        }
+    </div>
+</div>
+
+@code {
+    private List<Usuario>? usuarios;
+    private string nuevoNombre = "";
+    private string nuevoPassword = "";
+    private string nuevoRol = "Arbitro";
+    private string mensaje = "";
+    private bool esExito;
+
+    private int? usuarioCambiandoPasswordId;
+    private string nuevaPassword = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Cargar();
+    }
+
+    private async Task Cargar()
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        usuarios = await db.Usuarios.OrderBy(u => u.NombreUsuario).ToListAsync();
+    }
+
+    private async Task CrearUsuario()
+    {
+        mensaje = ""; esExito = false;
+
+        if (string.IsNullOrWhiteSpace(nuevoNombre) || string.IsNullOrWhiteSpace(nuevoPassword))
+        {
+            mensaje = "Ponle usuario y contraseña.";
+            return;
+        }
+
+        using var db = await DbFactory.CreateDbContextAsync();
+
+        db.Usuarios.Add(new Usuario
+        {
+            NombreUsuario = nuevoNombre.Trim(),
+            PasswordHash = PasswordHasher.Hash(nuevoPassword),
+            Rol = nuevoRol,
+            Activo = true
+        });
+
+        try
+        {
+            await db.SaveChangesAsync();
+        }
+        catch (DbUpdateException ex)
+        {
+            mensaje = ex.InnerException?.Message.Contains("UQ") == true || ex.InnerException?.Message.Contains("PRIMARY") == true
+                ? "Ya  existe un usuario con ese nombre."
+                : $"No se pudo guardar: {ex.InnerException?.Message ?? ex.Message}";
+            return;
+        }
+
+        nuevoNombre = ""; nuevoPassword = ""; nuevoRol = "Arbitro";
+        mensaje = "Usuario creado.";
+        esExito = true;
+        await Cargar();
+    }
+
+    private async Task AlternarActivo(int id)
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        var u = await db.Usuarios.FindAsync(id);
+        if (u == null) return;
+
+        u.Activo = !u.Activo;
+        await db.SaveChangesAsync();
+        await Cargar();
+    }
+
+    private void AbrirCambioPassword(int id)
+    {
+        usuarioCambiandoPasswordId = id;
+        nuevaPassword = "";
+    }
+
+    private async Task GuardarNuevaPassword(int id)
+    {
+        if (string.IsNullOrWhiteSpace(nuevaPassword)) return;
+
+        using var db = await DbFactory.CreateDbContextAsync();
+        var u = await db.Usuarios.FindAsync(id);
+        if (u == null) return;
+
+        u.PasswordHash = PasswordHasher.Hash(nuevaPassword);
+        await db.SaveChangesAsync();
+
+        usuarioCambiandoPasswordId = null;
+        mensaje = "Contraseña actualizada.";
+        esExito = true;
+        await Cargar();
+    }
+}

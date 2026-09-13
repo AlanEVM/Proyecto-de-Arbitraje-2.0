@@ -1,0 +1,900 @@
+﻿@page "/fasefinal"
+@implements IDisposable
+@using Microsoft.AspNetCore.Authorization
+@using ProyectoArbitraje.Data
+@using ProyectoArbitraje.Models
+@using ProyectoArbitraje.Services
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<TorneoContext> DbFactory
+@inject TorneoActualService TorneoActual
+@inject FaseFinalService FaseFinalSvc
+@inject CalendarioService CalendarioSvc
+@inject IJSRuntime JS
+@inject AuthenticationStateProvider AuthStateProvider
+@inject TorneoEventBus EventBus
+
+<PageTitle>Fase Final</PageTitle>
+
+@if (TorneoActual.TorneoId == null)
+{
+    <div class="pagina">
+        <p class="vacio">No hay un torneo activo. <a href="">Ve a Inicio</a> y entra a uno primero.</p>
+    </div>
+    return;
+}
+
+<div class="pagina">
+    <div class="tarjeta-marcador pagina-header">
+        <h1>Fase Final - @TorneoActual.NombreTorneo</h1>
+    </div>
+
+    @if (partidosActivosTorneo.Any())
+    {
+        <div class="tarjeta no-imprimir">
+            <h2>Partidos activos en cancha</h2>
+            @foreach (var item in partidosActivosTorneo)
+            {
+                <div class="categoria-generar-row">
+                    <span class="categoria-generar-nombre">
+                        @(item.CanchaNumero != null ? $"Cancha {item.CanchaNumero} · " : "")@item.Categoria - @item.NombreA vs @item.NombreB
+                    </span>
+                    <button class="btn btn-ghost" @onclick="() => IrACategoria(item.CategoriaId)">Ir a esta categoría</button>
+                </div>
+            }
+        </div>
+    }
+
+    <div class="tarjeta no-imprimir">
+        <h2>1. Selecciona la categoría</h2>
+
+        @if (categorias != null)
+        {
+            <div class="campo" style="max-width:400px;">
+                <select @bind="categoriaSeleccionadaId" @bind:after="CargarBracket">
+                    <option value="0">-- Selecciona --</option>
+                    @foreach (var c in categorias)
+                    {
+                        <option value="@c.Id">@c.Nombre - @c.Modalidad - @c.Rama (@c.Formato)</option>
+                    }
+                </select>
+            </div>
+        }
+    </div>
+
+    @if (categoriaSeleccionadaId != 0)
+    {
+        @if (bracket == null || !bracket.Any())
+        {
+            <div class="tarjeta no-imprimir">
+                @if (esSoloLectura)
+                {
+                    <p class="vacio">Todavía no hay fase final generada para esta categoría.</p>
+                }
+                else
+                {
+                    @if (CategoriaSeleccionada?.Formato == "Eliminatoria")
+                    {
+                        <h2>Sortear bracket</h2>
+                        <p class="nota">Sembrados configurados: @cantidadSembradosConfigurada (se cambia desde Categorías).</p>
+
+                        @if (propuestaEliminatoria == null)
+                        {
+                            @if (cantidadSembradosConfigurada == 0 || hayPuntosRanking == true)
+                            {
+                                <button class="btn btn-primary" @onclick="SortearEliminatoria">Sortear</button>
+                            }
+                            else if (hayPuntosRanking == false && competidoresParaSembrado != null)
+                            {
+                                <p class="mensaje-aviso">Ningún atleta tiene puntos de ranking previos, así que elige a mano quién queda sembrado y en qué posición.</p>
+
+                                @for (int i = 0; i < cantidadSembradosConfigurada; i++)
+                                {
+                                    int posicion = i;
+                                    <div class="campo" style="max-width:280px;">
+                                        <label>Sembrado #@EtiquetaSembrado(posicion + 1)</label>
+                                        <select @bind="sembradosManualSeleccion[posicion]">
+                                            <option value="0">-- Selecciona --</option>
+                                            @foreach (var comp in competidoresParaSembrado.Where(c => c.Id == sembradosManualSeleccion[posicion] || !sembradosManualSeleccion.Contains(c.Id)))
+                                            {
+                                                <option value="@comp.Id">@comp.Nombre (@comp.Municipio)</option>
+                                            }
+                                        </select>
+                                    </div>
+                                }
+
+                                <button class="btn btn-primary" @onclick="SortearConSembradosManuales">Sortear</button>
+                            }
+                        }
+
+                        @if (propuestaEliminatoria != null)
+                        {
+                            <h3 style="margin-top:20px;">Propuesta de llave</h3>
+
+                            <div class="bracket-wrapper" style="overflow-x:visible;">
+                                <div class="bracket-grid" style="grid-template-rows:auto repeat(@(propuestaEliminatoria.Count / 2), minmax(78px, 1fr)); grid-template-columns: 1fr; min-width:280px; max-width:420px;">
+                                    @for (int i = 0; i < propuestaEliminatoria.Count; i += 2)
+                                    {
+                                        var a = propuestaEliminatoria[i];
+                                        var b = propuestaEliminatoria[i + 1];
+                                        int filaVisual = PosicionVisual(i / 2, propuestaEliminatoria.Count / 2);
+
+                                        <div class="bracket-slot" style="grid-column:1; grid-row:@(filaVisual + 2) / span 1;">
+                                            <div class="bracket-match">
+                                                <div class="bracket-competidor">
+                                                    <span class="bracket-nombre">
+                                                        @if (a.EsSembrado)
+                                                        {
+                                                            <span class="bracket-seed">@EtiquetaSembrado(a.NumeroSeed ?? 0)</span>
+                                                        }
+                                                        @a.Nombre
+                                                    </span>
+                                                </div>
+                                                <div class="bracket-competidor">
+                                                    <span class="bracket-nombre">
+                                                        @if (b.EsSembrado)
+                                                        {
+                                                            <span class="bracket-seed">@EtiquetaSembrado(b.NumeroSeed ?? 0)</span>
+                                                        }
+                                                        @b.Nombre
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+
+                            <div style="margin-top:12px;">
+                                @if (cantidadSembradosConfigurada == 0 || hayPuntosRanking == true)
+                                {
+                                    <button class="btn btn-secondary" @onclick="SortearEliminatoria">Sortear de nuevo</button>
+                                }
+                                else
+                                {
+                                    <button class="btn btn-secondary" @onclick="SortearConSembradosManuales">Sortear de nuevo</button>
+                                }
+                                <button class="btn btn-primary" @onclick="ConfirmarEliminatoria">Confirmar bracket</button>
+                            </div>
+                        }
+                    }
+                    else if (CategoriaSeleccionada?.Formato == "Jornadas")
+                    {
+                        <p class="nota">Cuando todas las jornadas ya se hayan jugado, genera las llaves de eliminación por bandas de 4 (según la tabla general).</p>
+                        <button class="btn btn-primary" @onclick="GenerarBandas">Generar Llaves de Eliminación</button>
+                    }
+                    else
+                    {
+                        <p class="nota">Esta categoría todavía no tiene fase final generada.</p>
+                        <button class="btn btn-primary" @onclick="GenerarBracket">Generar Fase Final</button>
+                    }
+
+                    @if (!string.IsNullOrEmpty(mensaje))
+                    {
+                        <p class="@(esExito ? "mensaje-exito" : "mensaje-error") mensaje-flotante">@mensaje</p>
+                    }
+                }
+            </div>
+        }
+        else
+        {
+            @foreach (var banda in bracket.Select(x => x.Banda).Distinct().OrderBy(b => b ?? 0))
+            {
+                var fasesRonda = bracket.Where(x => x.Banda == banda)
+                    .Select(x => x.Fase).Distinct()
+                    .OrderBy(f => OrdenFase.GetValueOrDefault(f, 99))
+                    .ToList();
+
+                if (!fasesRonda.Any()) continue;
+
+                int totalFilas = bracket.Count(x => x.Banda == banda && x.Fase == fasesRonda[0]);
+                var seeds = CalcularSeeds(bracket.Where(x => x.Banda == banda && x.Fase == fasesRonda[0]).ToList());
+                int? rondaFocoActual = rondaEnfocada.GetValueOrDefault(banda ?? 0, null);
+
+                string columnasTemplate = string.Join(" ",
+                    Enumerable.Range(0, fasesRonda.Count).SelectMany(r =>
+                        r < fasesRonda.Count - 1 ? new[] { "minmax(230px,1fr)", "64px" } : new[] { "minmax(230px,1fr)" }));
+
+                <div class="tarjeta">
+                    @if (banda != null)
+                    {
+                        <h2>Llave @banda</h2>
+                    }
+                    
+                    <div class="bracket-controles">
+                        @for (int r = 0; r < fasesRonda.Count; r++)
+                        {
+                            int rLocal = r;
+                            <button class="btn btn-ghost" @onclick="() => IrARonda(banda, rLocal, fasesRonda)">@fasesRonda[rLocal]</button>
+                        }
+                        <button class="btn btn-secondary" @onclick="() => VerTodo(banda)">Ver todo</button>
+                        <button class="btn btn-ghost" @onclick="() => Imprimir(banda)">Imprimir</button>
+                    </div>
+                    
+                    <div id="bracket-wrap-@(banda ?? 0)" class="bracket-wrapper">
+                        <div class="bracket-grid" style="--filas:@totalFilas; grid-template-columns:@columnasTemplate;">
+
+                            @for (int r = 0; r < fasesRonda.Count; r++)
+                            {
+                                string fase = fasesRonda[r];
+                                var itemsRonda = bracket.Where(x => x.Banda == banda && x.Fase == fase).OrderBy(x => x.Posicion).ToList();
+                                int span = 1 << r;
+                                int col = 2 * r + 1;
+                                bool esUltima = r == fasesRonda.Count - 1;
+                                bool atenuada = rondaFocoActual.HasValue && rondaFocoActual != r;
+                                bool enfocada = rondaFocoActual == r;
+                                string claseZoom = atenuada ? "atenuada" : (enfocada ? "enfocada" : "");
+
+                                <div id="ronda-@(banda ?? 0)-@r" class="bracket-titulo-ronda @claseZoom" style="grid-column:@col;" @onclick="() => IrARonda(banda, r, fasesRonda)">@fase</div>
+
+                                @foreach (var item in itemsRonda)
+                                {
+                                    int gridStart = PosicionVisual(item.Posicion, itemsRonda.Count) * span + 2;
+
+                                    <div class="bracket-slot @claseZoom" style="grid-column:@col; grid-row:@gridStart / span @span;">
+                                        @if (item.Partido != null)
+                                        {
+                                            var p = item.Partido;
+                                            bool estaCapturando = partidoCapturandoId == p.Id;
+                                            string nombreA = string.Join(" / ", p.CompetidorA.CompetidorIntegrantes.Select(ci => ci.Atleta.Nombre));
+                                            string nombreB = string.Join(" / ", p.CompetidorB.CompetidorIntegrantes.Select(ci => ci.Atleta.Nombre));
+                                            bool ganoA = p.Estado == "Jugado" && p.GanadorId == p.CompetidorAid;
+                                            bool ganoB = p.Estado == "Jugado" && p.GanadorId == p.CompetidorBid;
+
+                                            <div class="bracket-match @(p.Estado == "Jugado" ? "jugado" : "")">
+                                                <div class="bracket-competidor @(ganoA ? "ganador" : p.Estado == "Jugado" ? "perdedor" : "")">
+                                                    <span class="bracket-nombre">
+                                                        @if (r == 0 && seeds.TryGetValue(p.CompetidorAid, out int seedA) && MostrarSembrado(seedA))
+                                                        {
+                                                            <span class="bracket-seed">#@EtiquetaSembrado(seedA)</span>
+                                                        }
+                                                        @nombreA
+                                                    </span>
+                                                    @if (p.Estado == "Jugado" && (p.SetsPartidos.Any() || p.EsDefault))
+                                                    {
+                                                        <span class="bracket-marcador">@(p.EsDefault ? "WO" : string.Join("/", p.SetsPartidos.OrderBy(s => s.NumeroSet).Select(s => s.PuntosA)))</span>
+                                                    }
+                                                </div>
+                                                <div class="bracket-competidor @(ganoB ? "ganador" : p.Estado == "Jugado" ? "perdedor" : "")">
+                                                    <span class="bracket-nombre">
+                                                        @if (r == 0 && seeds.TryGetValue(p.CompetidorBid, out int seedB) && MostrarSembrado(seedB))
+                                                        {
+                                                            <span class="bracket-seed">#@EtiquetaSembrado(seedB)</span>
+                                                        }
+                                                        @nombreB
+                                                    </span>
+                                                    @if (p.Estado == "Jugado" && (p.SetsPartidos.Any() || p.EsDefault))
+                                                    {
+                                                        <span class="bracket-marcador">@(p.EsDefault ? "WO" : string.Join("/", p.SetsPartidos.OrderBy(s => s.NumeroSet).Select(s => s.PuntosB)))</span>
+                                                    }
+                                                </div>
+
+                                                @if (p.Estado != "Jugado" && !esSoloLectura)
+                                                {
+                                                    <div class="bracket-acciones-match">
+                                                        @if (p.Estado == "Pendiente")
+                                                        {
+                                                            <button class="btn btn-primary btn-mini" @onclick="() => Activar(p.Id)">Activar</button>
+                                                        }
+                                                        <button class="btn btn-primary btn-mini" @onclick="() => AbrirCaptura(p.Id)">@(estaCapturando ? "Capturando..." : "Capturar")</button>
+                                                        <button class="btn btn-ghost btn-mini" @onclick="() => MarcarDefault(p.Id, p.CompetidorAid, nombreA)" title="@nombreA gana por default">WO A</button>
+                                                        <button class="btn btn-ghost btn-mini" @onclick="() => MarcarDefault(p.Id, p.CompetidorBid, nombreB)" title="@nombreB gana por default">WO B</button>
+                                                    </div>
+                                                }
+                                            </div>
+                                        }
+                                        else if (item.CompetidorConBye != null)
+                                        {
+                                            string nombreBye = string.Join(" / ", item.CompetidorConBye.CompetidorIntegrantes.Select(ci => ci.Atleta.Nombre));
+
+                                            <div class="bracket-bye">
+                                                @if (r == 0 && seeds.TryGetValue(item.CompetidorConBye.Id, out int seedBye) && MostrarSembrado(seedBye))
+                                                {
+                                                    <span class="bracket-seed">#@EtiquetaSembrado(seedBye)</span>
+                                                }
+                                                <strong>@nombreBye</strong>
+                                                <div class="nota" style="margin-top:2px;">BYE - pasa directo</div>
+                                            </div>
+                                        }
+                                    </div>
+                                }
+
+                                @if (!esUltima)
+                                {
+                                    int colGutter = col + 1;
+                                    int numPares = itemsRonda.Count / 2;
+
+                                    for (int par = 0; par < numPares; par++)
+                                    {
+                                        int topStart = par * 2 * span + 2;
+
+                                        <div class="bracket-conector-par" style="grid-column:@colGutter; grid-row:@topStart / span @(span * 2);">
+                                            <div class="conector-arriba"></div>
+                                            <div class="conector-abajo"></div>
+                                            <div class="conector-salida"></div>
+                                        </div>
+                                    }
+                                }
+                            }
+
+                        </div>
+                    </div>
+                </div>
+            }
+
+            @if (partidoCapturandoId != null)
+            {
+                var partidoActivo = bracket.Select(x => x.Partido).FirstOrDefault(p => p != null && p.Id == partidoCapturandoId);
+                if (partidoActivo != null)
+                {
+                    string nombreA = string.Join(" / ", partidoActivo.CompetidorA.CompetidorIntegrantes.Select(ci => ci.Atleta.Nombre));
+                    string nombreB = string.Join(" / ", partidoActivo.CompetidorB.CompetidorIntegrantes.Select(ci => ci.Atleta.Nombre));
+
+                    <div class="tarjeta no-imprimir">
+                        <h3>Capturar resultado: @nombreA vs @nombreB</h3>
+
+                        @if (!modoPuntoAPunto)
+                        {
+                            @if (esArbitro)
+                            {
+                                <div style="margin:8px 0;">
+                                    <button class="btn btn-ghost btn-mini" @onclick="() => IniciarPuntoAPunto(partidoActivo.Id)">Capturar punto por punto</button>
+                                </div>
+                            }
+
+                            <div class="captura-sets">
+                                <div class="captura-set">
+                                    <label>Set 1</label>
+                                    @nombreA: <input type="number" min="0" class="input-mini" @bind="s1a" /><br />
+                                    @nombreB: <input type="number" min="0" class="input-mini" @bind="s1b" />
+                                </div>
+                                @if (modalidadSets == "2 de 3 Sets")
+                                {
+                                    <div class="captura-set">
+                                        <label>Set 2</label>
+                                        @nombreA: <input type="number" min="0" class="input-mini" @bind="s2a" /><br />
+                                        @nombreB: <input type="number" min="0" class="input-mini" @bind="s2b" />
+                                    </div>
+                                    <div class="captura-set">
+                                        <label>Set 3</label>
+                                        @nombreA: <input type="number" min="0" class="input-mini" @bind="s3a" /><br />
+                                        @nombreB: <input type="number" min="0" class="input-mini" @bind="s3b" />
+                                    </div>
+                                }
+                            </div>
+                            <div style="margin-top:10px;">
+                                <button class="btn btn-primary" @onclick="GuardarResultado">Guardar Resultado</button>
+                                <button class="btn btn-ghost" @onclick="() => partidoCapturandoId = null">Cancelar</button>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="captura-sets">
+                                <p class="nota">Set @numeroSetActual</p>
+
+                                @if (estadoSet != null && estadoSet.Puntos.Count == 0)
+                                {
+                                    <div class="campo" style="max-width:200px;">
+                                        <label>Saca</label>
+                                        <select @bind="primerSirveElegido">
+                                            <option value="">-- Selecciona --</option>
+                                            @foreach (var ci in partidoActivo.CompetidorA.CompetidorIntegrantes)
+                                            {
+                                                <option value="@ci.AtletaId">@ci.Atleta.Nombre (@nombreA)</option>
+                                            }
+                                            @foreach (var ci in partidoActivo.CompetidorB.CompetidorIntegrantes)
+                                            {
+                                                <option value="@ci.AtletaId">@ci.Atleta.Nombre (@nombreB)</option>
+                                            }
+                                        </select>
+                                    </div>
+                                    @if (partidoActivo.CompetidorA.CompetidorIntegrantes.Count > 1)
+                                    {
+                                        <div class="campo" style="max-width:280px;">
+                                            <label>Recibe</label>
+                                            <select @bind="primerRecibeElegido">
+                                                <option value="">-- Selecciona --</option>
+                                                @foreach (var ci in partidoActivo.CompetidorA.CompetidorIntegrantes)
+                                                {
+                                                    <option value="@ci.AtletaId">@ci.Atleta.Nombre (@nombreA)</option>
+                                                }
+                                                @foreach (var ci in partidoActivo.CompetidorB.CompetidorIntegrantes)
+                                                {
+                                                    <option value="@ci.AtletaId">@ci.Atleta.Nombre (@nombreB)</option>
+                                                }
+                                            </select>
+                                        </div>
+                                    }
+                                }
+                                else if (estadoSet != null)
+                                {
+                                    <div class="servicio-actual">Saca @estadoSet.ProximoSirveNombre - Recibe @estadoSet.ProximoRecibeNombre</div>
+                                }
+
+                                @if (estadoSet != null)
+                                {
+                                    bool setGanado = estadoSet.Puntos.Count > 0 && CalendarioService.EsMarcadorValido(Math.Max(estadoSet.PuntosA, estadoSet.PuntosB), Math.Min(estadoSet.PuntosA, estadoSet.PuntosB), puntosJuego, puntosLimite);
+
+                                    <h3 style="margin:10px 0;">@estadoSet.PuntosA - @estadoSet.PuntosB</h3>
+
+                                    @if (!setGanado)
+                                    {
+                                        <button class="btn btn-primary" disabled="@procesandoPunto" @onclick='() => RegistrarPunto(partidoActivo, "A")'>Punto @nombreA</button>
+                                        <button class="btn btn-primary" disabled="@procesandoPunto" @onclick='() => RegistrarPunto(partidoActivo, "B")'>Punto @nombreB</button>
+                                        @if (estadoSet.Puntos.Count > 0)
+                                        {
+                                            <button class="btn btn-ghost" @onclick="() => DeshacerPunto(partidoActivo.Id)">Deshacer último punto</button>
+                                        }
+                                    }
+
+                                    @if (estadoSet.Puntos.Any())
+                                    {
+                                        <div class="grilla-puntos">
+                                            <div class="grilla-puntos-header">
+                                                <span>@nombreA</span>
+                                                <span>@nombreB</span>
+                                            </div>
+                                            @foreach (var p in estadoSet.Puntos.OrderByDescending(p => p.NumeroPunto))
+                                            {
+                                                <div class="grilla-puntos-fila">
+                                                    <span class="grilla-punto-celda @(p.EquipoAnoto == "A" ? "anoto" : "")">@(p.EquipoAnoto == "A" ? p.PuntosA.ToString() : "")</span>
+                                                    <span class="grilla-punto-celda @(p.EquipoAnoto == "B" ? "anoto" : "")">@(p.EquipoAnoto == "B" ? p.PuntosB.ToString() : "")</span>
+                                                </div>
+                                            }
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <p class="mensaje-exito">Set ganado: @estadoSet.PuntosA-@estadoSet.PuntosB</p>
+                                        <button class="btn btn-primary" @onclick="() => ConfirmarSetPuntoAPunto(partidoActivo, nombreA, nombreB)">Confirmar y continuar</button>
+                                        <button class="btn btn-ghost" @onclick="() => DeshacerPunto(partidoActivo.Id)">Deshacer último punto</button>
+                                    }
+                                }
+                            </div>
+                            <div style="margin-top: 10px;">
+                                <button class="btn btn-ghost" @onclick="() => MarcarDefaultPuntoAPunto(partidoActivo.Id, partidoActivo.CompetidorAid, nombreA)" title="@nombreA gana por default">WO: @nombreA</button>
+                                <button class="btn btn-ghost" @onclick="() => MarcarDefaultPuntoAPunto(partidoActivo.Id, partidoActivo.CompetidorBid, nombreB)" title="@nombreB gana por default">WO: @nombreB</button>
+                            </div>
+                            <div style="margin-top: 10px;">
+                                <button class="btn btn-ghost" @onclick="CancelarPuntoAPunto">Cambiar a marcador final</button>
+                                <button class="btn btn-ghost" @onclick="() => partidoCapturandoId = null">Cancelar captura</button>
+                            </div>
+                        }
+                    </div>
+                }
+            }
+
+            @if (!string.IsNullOrEmpty(mensaje))
+            {
+                <p class="@(esExito ? "mensaje-exito" : "mensaje-error") mensaje-flotante">@mensaje</p>
+            }
+        }
+    }
+</div>
+
+@code {
+    private static readonly Dictionary<string, int> OrdenFase = new()
+    {
+        ["Dieciseisavos"] = 0,
+        ["Octavos"] = 1,
+        ["Cuartos"] = 2,
+        ["Semifinal"] = 3,
+        ["Final"] = 4,
+    };
+
+    private List<Categoria>? categorias;
+    private int categoriaSeleccionadaId;
+    private Categoria? CategoriaSeleccionada => categorias?.FirstOrDefault(c => c.Id == categoriaSeleccionadaId);
+
+    private List<LlaveItem>? bracket;
+    private List<SlotEliminatoria>? propuestaEliminatoria;
+
+    private int cantidadSembradosConfigurada;
+    private bool? hayPuntosRanking;
+    private List<(int Id, string Nombre, int? AnioNacimiento, string Municipio)>? competidoresParaSembrado;
+    private List<int> sembradosManualSeleccion = new();
+
+    private Dictionary<int, int?> rondaEnfocada = new();
+
+    private int? partidoCapturandoId;
+    private int s1a, s1b, s2a, s2b, s3a, s3b;
+    private string modalidadSets = "2 de 3 Sets";
+    private int puntosJuego = 21;
+    private int puntosLimite = 30;
+
+    private string mensaje = "";
+    private bool esExito;
+    private bool esSoloLectura;
+    private string nombreUsuarioActual = "";
+    private bool esArbitro;
+    private List<PartidoActivoInfo> partidosActivosTorneo = new();
+
+    private class PartidoActivoInfo
+    {
+        public int PartidoId { get; set; }
+        public int CategoriaId { get; set; }
+        public string Categoria { get; set; } = "";
+        public string NombreA { get; set; } = "";
+        public string NombreB { get; set; } = "";
+        public int? CanchaNumero { get; set; }
+    }
+
+    private bool modoPuntoAPunto;
+    private int numeroSetActual = 1;
+    private CalendarioService.EstadoSetPuntoAPunto? estadoSet;
+    private int? primerSirveElegido;
+    private int? primerRecibeElegido;
+    private bool procesandoPunto; 
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (TorneoActual.TorneoId == null) return;
+
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        esSoloLectura = !authState.User.Identity!.IsAuthenticated;
+        esArbitro = authState.User.IsInRole("Arbitro");
+        nombreUsuarioActual = authState.User.Identity?.Name ?? "";
+
+        using var db = await DbFactory.CreateDbContextAsync();
+        var torneoId = TorneoActual.TorneoId!.Value;
+        categorias = await db.Categorias.Where(c => c.TorneoId == torneoId).ToListAsync();
+
+        await CargarPartidosActivosTorneo();
+
+        EventBus.OnCambio += ManejarCambioExterno;
+    }
+
+    private async void ManejarCambioExterno()
+    {
+        await InvokeAsync(async () =>
+        {
+            await CargarBracket();
+            await CargarPartidosActivosTorneo();
+            StateHasChanged();
+        });
+    }
+
+    public void Dispose()
+    {
+        EventBus.OnCambio -= ManejarCambioExterno;
+    }
+
+    private async Task CargarPartidosActivosTorneo()
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        var torneoId = TorneoActual.TorneoId!.Value;
+        var categoriaIds = await db.Categorias.Where(c => c.TorneoId == torneoId).Select(c => c.Id).ToListAsync();
+
+        var partidos = await db.Partidos
+            .Where(p => categoriaIds.Contains(p.CategoriaId) && p.Estado == "EnCancha" && p.Fase != "Grupos" && p.Fase != "Liga")
+            .Include(p => p.Categoria)
+            .Include(p => p.Cancha)
+            .Include(p => p.CompetidorA).ThenInclude(c => c.CompetidorIntegrantes).ThenInclude(ci => ci.Atleta)
+            .Include(p => p.CompetidorB).ThenInclude(c => c.CompetidorIntegrantes).ThenInclude(ci => ci.Atleta)
+            .OrderBy(p => p.Cancha!.Numero)
+            .ToListAsync();
+
+        partidosActivosTorneo = partidos.Select(p => new PartidoActivoInfo
+        {
+            PartidoId = p.Id,
+            CategoriaId = p.CategoriaId,
+            Categoria = $"{p.Categoria.Nombre} · {p.Categoria.Modalidad} · {p.Categoria.Rama}",
+            NombreA = string.Join(" / ", p.CompetidorA.CompetidorIntegrantes.Select(ci => ci.Atleta.Nombre)),
+            NombreB = string.Join(" / ", p.CompetidorB.CompetidorIntegrantes.Select(ci => ci.Atleta.Nombre)),
+            CanchaNumero = p.Cancha?.Numero
+        }).ToList();
+    }
+
+    private async Task IrACategoria(int categoriaId)
+    {
+        categoriaSeleccionadaId = categoriaId;
+        await CargarBracket();
+    }
+
+    private async Task CargarBracket()
+    {
+        mensaje = "";
+        propuestaEliminatoria = null;
+        partidoCapturandoId = null;
+        rondaEnfocada.Clear();
+
+        if (categoriaSeleccionadaId == 0) { bracket = null; return; }
+
+        bracket = await FaseFinalSvc.ObtenerBracketAsync(categoriaSeleccionadaId);
+
+        using var db = await DbFactory.CreateDbContextAsync();
+        var config = await db.Configuracions.FirstOrDefaultAsync(c => c.CategoriaId == categoriaSeleccionadaId);
+        modalidadSets = config?.ModalidadSetsFinal ?? config?.ModalidadSets ?? "2 de 3 Sets";
+        puntosJuego = config?.PuntosJuegoFinal ?? config?.PuntosJuego ?? 21;
+        puntosLimite = config?.PuntosLimiteFinal ?? config?.PuntosLimite ?? 30;
+
+        hayPuntosRanking = null;
+        competidoresParaSembrado = null;
+        sembradosManualSeleccion.Clear();
+
+        if (CategoriaSeleccionada?.Formato == "Eliminatoria")
+        {
+            cantidadSembradosConfigurada = config?.CantidadSembrados ?? 0;
+
+            if (cantidadSembradosConfigurada > 0)
+            {
+                hayPuntosRanking = await FaseFinalSvc.HayPuntosDeRankingAsync(categoriaSeleccionadaId);
+                if (hayPuntosRanking == false)
+                {
+                    competidoresParaSembrado = await FaseFinalSvc.ObtenerCompetidoresParaSembradoAsync(categoriaSeleccionadaId);
+                    sembradosManualSeleccion = Enumerable.Repeat(0, cantidadSembradosConfigurada).ToList();
+                }
+            }
+        }
+    }
+
+    private Dictionary<int, int> CalcularSeeds(List<LlaveItem> itemsRonda0)
+    {
+        var dict = new Dictionary<int, int>();
+        foreach (var item in itemsRonda0)
+        {
+            if (item.Partido != null)
+            {
+                if (item.Partido.CompetidorA.NumeroSembrado != null)
+                    dict[item.Partido.CompetidorAid] = item.Partido.CompetidorA.NumeroSembrado.Value;
+                if (item.Partido.CompetidorB.NumeroSembrado != null)
+                    dict[item.Partido.CompetidorBid] = item.Partido.CompetidorB.NumeroSembrado.Value;
+            }
+            else if (item.CompetidorConBye?.NumeroSembrado != null)
+            {
+                dict[item.CompetidorConBye.Id] = item.CompetidorConBye.NumeroSembrado.Value;
+            }
+        }
+        return dict;
+    }
+
+    private static int PosicionVisual(int posicionReal, int totalPosiciones)
+    {
+        if (totalPosiciones <= 1) return 0;
+        int mitad = totalPosiciones / 2;
+        if (posicionReal < mitad)
+            return PosicionVisual(posicionReal, mitad);
+
+        int posEnMitadInferior = posicionReal - mitad;
+        return totalPosiciones - 1 - PosicionVisual(posEnMitadInferior, mitad);
+    }
+
+    private static string EtiquetaSembrado(int numero) => numero switch
+    {
+        1 => "1",
+        2 => "2",
+        3 or 4 => "3/4",
+        >= 5 and <= 8 => "5/8",
+        >= 9 and <= 16 => "9/16",
+        _ => numero.ToString()
+    };
+
+    private bool MostrarSembrado(int numeroSeed)
+    {
+        if (CategoriaSeleccionada?.Formato != "Eliminatoria") return true;
+        return numeroSeed <= cantidadSembradosConfigurada;
+    }
+
+    private async Task IrARonda(int? banda, int rondaIndex, List<string> fasesRonda)
+    {
+        int clave = banda ?? 0;
+        rondaEnfocada[clave] = rondaIndex;
+        await JS.InvokeVoidAsync("bracketIrARonda", $"ronda-{clave}-{rondaIndex}");
+    }
+
+    private async Task VerTodo(int? banda)
+    {
+        int clave = banda ?? 0;
+        rondaEnfocada[clave] = null;
+        await JS.InvokeVoidAsync("bracketVerTodo", $"bracket-wrap-{clave}");
+    }
+
+    private Task Imprimir(int? banda)
+    {
+        _ = JS.InvokeVoidAsync("bracketImprimir", $"bracket-wrap-{banda ?? 0}");
+        return Task.CompletedTask;
+    }
+
+    private async Task SortearEliminatoria()
+    {
+        mensaje = "";
+        var (ok, msg, propuesta) = await FaseFinalSvc.PrepararEliminatoriaAsync(categoriaSeleccionadaId, cantidadSembradosConfigurada);
+        mensaje = msg; esExito = ok;
+        propuestaEliminatoria = ok ? propuesta : null;
+    }
+
+    private async Task SortearConSembradosManuales()
+    {
+        mensaje = "";
+
+        if (sembradosManualSeleccion.Any(id => id == 0) || sembradosManualSeleccion.Distinct().Count() != sembradosManualSeleccion.Count)
+        {
+            mensaje = "Elige un atleta distinto para cada posición de sembrado.";
+            esExito = false;
+            return;
+        }
+
+        var (ok, msg, propuesta) = await FaseFinalSvc.PrepararEliminatoriaManualAsync(categoriaSeleccionadaId, sembradosManualSeleccion);
+        mensaje = msg; esExito = ok;
+        propuestaEliminatoria = ok ? propuesta : null;
+    }
+
+    private async Task ConfirmarEliminatoria()
+    {
+        if (propuestaEliminatoria == null) return;
+        var (ok, msg) = await FaseFinalSvc.ConfirmarBracketEliminatoriaAsync(categoriaSeleccionadaId, propuestaEliminatoria);
+        mensaje = msg; esExito = ok;
+        if (ok) { propuestaEliminatoria = null; await CargarBracket(); }
+    }
+
+    private async Task GenerarBracket()
+    {
+        var (ok, msg) = await FaseFinalSvc.GenerarFaseFinalAsync(categoriaSeleccionadaId);
+        mensaje = msg; esExito = ok;
+        if (ok) await CargarBracket();
+    }
+
+    private async Task GenerarBandas()
+    {
+        var (ok, msg) = await FaseFinalSvc.GenerarBandasEliminacionAsync(categoriaSeleccionadaId);
+        mensaje = msg; esExito = ok;
+        if (ok) await CargarBracket();
+    }
+
+    private void AbrirCaptura(int partidoId)
+    {
+        partidoCapturandoId = partidoId;
+        s1a = s1b = s2a = s2b = s3a = s3b = 0;
+        modoPuntoAPunto = false;
+        numeroSetActual = 1;
+        estadoSet = null;
+    }
+
+    private async Task GuardarResultado()
+    {
+        if (partidoCapturandoId == null) return;
+
+        var (ok, msg) = await FaseFinalSvc.CapturarResultadoBracketAsync(
+            partidoCapturandoId.Value, s1a, s1b, s2a, s2b, s3a, s3b, modalidadSets, puntosJuego, puntosLimite, nombreUsuarioActual);
+
+        mensaje = msg; esExito = ok;
+
+        if (ok)
+        {
+            partidoCapturandoId = null;
+            await CargarBracket();
+        }
+    }
+
+    private async Task Activar(int partidoId)
+    {
+        var (ok, msg) = await CalendarioSvc.ActivarPartidoAsync(partidoId, TorneoActual.TorneoId!.Value);
+        mensaje = msg; esExito = ok;
+        if (ok) await CargarBracket();
+    }
+
+    private async Task MarcarDefault(int partidoId, int ganadorId, string nombreGanador)
+    {
+        bool confirmado = await JS.InvokeAsync<bool>("confirm", $"¿Marcar a {nombreGanador} como ganador por default?");
+        if (!confirmado) return;
+
+        var (ok, msg) = await CalendarioSvc.MarcarPorDefaultAsync(partidoId, ganadorId, nombreUsuarioActual);
+        mensaje = msg; esExito = ok;
+        if (ok) await CargarBracket();
+    }
+
+    private async Task IniciarPuntoAPunto(int partidoId)
+    {
+        modoPuntoAPunto = true;
+        numeroSetActual = 1;
+        s1a = s1b = s2a = s2b = s3a = s3b = 0;
+        primerSirveElegido = null;
+        primerRecibeElegido = null;
+        await CargarEstadoSet(partidoId);
+    }
+
+    private void CancelarPuntoAPunto()
+    {
+        modoPuntoAPunto = false;
+        estadoSet = null;
+    }
+
+    private async Task CargarEstadoSet(int partidoId)
+    {
+        estadoSet = await CalendarioSvc.ObtenerEstadoSetAsync(partidoId, numeroSetActual);
+    }
+
+    private async Task RegistrarPunto(Partido partidoActivo, string equipo)
+    {
+        if (procesandoPunto) return;
+        procesandoPunto = true;
+
+        bool esPrimerPunto = estadoSet == null || estadoSet.Puntos.Count == 0;
+
+        if (esPrimerPunto && partidoActivo.CompetidorA.CompetidorIntegrantes.Count == 1 && primerSirveElegido != null)
+        {
+            bool sirveEsA = partidoActivo.CompetidorA.CompetidorIntegrantes.Any(ci => ci.AtletaId == primerSirveElegido);
+            primerRecibeElegido = sirveEsA
+                ? partidoActivo.CompetidorB.CompetidorIntegrantes.First().AtletaId
+                : partidoActivo.CompetidorA.CompetidorIntegrantes.First().AtletaId;
+        }
+
+        if (esPrimerPunto && (primerSirveElegido == null || primerRecibeElegido == null))
+        {
+            mensaje = "Elige quién saca y quién recibe para iniciar el set.";
+            esExito = false;
+            procesandoPunto = false;
+            return;
+        }
+
+        var (ok, msg) = await CalendarioSvc.RegistrarPuntoAsync(
+            partidoActivo.Id, numeroSetActual, equipo, puntosJuego, puntosLimite,
+            esPrimerPunto ? primerSirveElegido : null,
+            esPrimerPunto ? primerRecibeElegido : null);
+
+        if (!ok) { mensaje = msg; esExito = false; }
+
+        await CargarEstadoSet(partidoActivo.Id);
+        procesandoPunto = false;
+    }
+
+    private async Task DeshacerPunto(int partidoId)
+    {
+        var (ok, msg) = await CalendarioSvc.DeshacerUltimoPuntoAsync(partidoId,numeroSetActual);
+        if (!ok) { mensaje = msg; esExito = false; }
+        await CargarEstadoSet(partidoId);
+    }
+
+    private async Task ConfirmarSetPuntoAPunto(Partido partidoActivo, string nombreA, string nombreB)
+    {
+        if (estadoSet == null) return;
+
+        if (numeroSetActual == 1) { s1a = estadoSet.PuntosA; s1b = estadoSet.PuntosB; }
+        else if (numeroSetActual == 2) { s2a = estadoSet.PuntosA; s2b = estadoSet.PuntosB; }
+        else { s3a = estadoSet.PuntosA; s3b = estadoSet.PuntosB; }
+
+        int setsA = (s1a > s1b ? 1 : 0) + (s2a > s2b && (s2a > 0 || s2b > 0) ? 1 : 0) + (s3a > s3b && (s3a > 0 || s3b > 0) ? 1 : 0);
+        int setsB = (s1b > s1a ? 1 : 0) + (s2b > s2a && (s2a > 0 || s2b > 0) ? 1 : 0) + (s3b > s3a && (s3a > 0 || s3b > 0) ? 1 : 0);
+
+        bool partidoTerminado = modalidadSets == "1 Set" || setsA == 2 || setsB == 2;
+
+        if (partidoTerminado)
+        {
+            bool confirmado = await JS.InvokeAsync<bool>("confirm", $"¿Terminar el partido con este resultado? Sets ganados: {setsA}-{setsB}.");
+            if (!confirmado) return;
+
+            var (ok, msg) = await FaseFinalSvc.CapturarResultadoBracketAsync(partidoActivo.Id, s1a, s1b, s2a, s2b, s3a, s3b,modalidadSets, puntosJuego, puntosLimite, nombreUsuarioActual);
+            mensaje = msg; esExito = ok;
+
+            if (ok)
+            {
+                partidoCapturandoId = null;
+                modoPuntoAPunto = false;
+                await CargarBracket();
+            }
+        }
+        else
+        {
+            numeroSetActual++;
+            primerSirveElegido = null;
+            primerRecibeElegido = null;
+            await CargarEstadoSet(partidoActivo.Id);
+        }
+    }
+
+    private async Task MarcarDefaultPuntoAPunto(int partidoId, int ganadorId, string nombreGanador)
+    {
+        bool confirmado = await JS.InvokeAsync<bool>("confirm", $"¿Terminar el partido y marcar a {nombreGanador} como ganador por default? Se pierde el punto por punto que llevaba este set.");
+        if (!confirmado) return;
+
+        var (ok, msg) = await CalendarioSvc.MarcarPorDefaultAsync(partidoId, ganadorId, nombreUsuarioActual);
+        mensaje = msg; esExito = ok;
+
+        if (ok)
+        {
+            partidoCapturandoId = null;
+            modoPuntoAPunto = false;
+        }
+
+        await CargarBracket();
+    }
+}

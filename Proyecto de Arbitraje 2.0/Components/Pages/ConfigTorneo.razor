@@ -1,0 +1,585 @@
+﻿@page "/config-torneo"
+@attribute [Authorize(Roles = "Admin")]
+@using Microsoft.AspNetCore.Authorization
+@using ProyectoArbitraje.Data
+@using ProyectoArbitraje.Models
+@using ProyectoArbitraje.Services
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<TorneoContext> DbFactory
+@inject TorneoActualService TorneoActual
+@inject IJSRuntime JS
+
+<PageTitle>Configuración del Torneo</PageTitle>
+
+@if (TorneoActual.TorneoId == null)
+{
+    <div class="pagina">
+        <p class="vacio">No hay un torneo activo. <a href="">Ve a Inicio</a> y entra a uno primero.</p>
+    </div>
+    return;
+}
+
+<div class="pagina">
+    <div class="tarjeta-marcador pagina-header">
+        <h1>Configuración</h1>
+        <p class="pagina-subtitulo">@TorneoActual.NombreTorneo</p>
+    </div>
+
+    <div class="tarjeta">
+        <h2>Datos del torneo</h2>
+        <div class="campos-fila">
+            <div class="campo" style="max-width:300px;">
+                <label>Nombre</label>
+                <input @bind="editNombre" />
+            </div>
+            <div class="campo" style="max-width:180px;">
+                <label>Fecha</label>
+                <input type="date" @bind="editFecha" />
+            </div>
+            <div class="campo">
+                <button class="btn btn-primary" @onclick="GuardarEdicionTorneo">Guardar Cambios</button>
+            </div>
+        </div>
+    </div>
+
+    <hr class="cancha-divider" />
+
+    <div class="tarjeta">
+        <h2>Categorías actuales</h2>
+        @if (categoriasDelTorneoActivo != null && categoriasDelTorneoActivo.Any())
+        {
+            <table class="tabla-limpia">
+                <thead>
+                    <tr>
+                        <th>Nombre</th>
+                        <th>Modalidad</th>
+                        <th>Rama</th>
+                        <th>Formato</th>
+                        <th>Configuración de partido</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var c in categoriasDelTorneoActivo)
+                    {
+                        var cfg = configPorCategoria.GetValueOrDefault(c.Id);
+                        <tr>
+                            <td>@c.Nombre</td>
+                            <td>@c.Modalidad</td>
+                            <td>@c.Rama</td>
+                            <td><span class="badge @ClaseBadgeFormato(c.Formato)">@NombreFormato(c.Formato)</span></td>
+                            <td>
+                                @if (cfg != null)
+                                {
+                                    <span class="nota">@cfg.ModalidadSets · a @cfg.PuntosJuego (tope @cfg.PuntosLimite)</span>
+                                }
+                            </td>
+                            <td class="col-accion">
+                                <button class="btn btn-ghost" @onclick="() => AbrirEdicionConfig(c)">Editar config</button>
+                                <button class="btn btn-danger" @onclick="() => EliminarCategoria(c)">Eliminar</button>
+                            </td>
+                        </tr>
+                        @if (categoriaEditandoConfigId == c.Id)
+                        {
+                            <tr>
+                                <td colspan="6">
+                                    <div class="subtarjeta" style="display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap;">
+                                        @if (categoriasIniciadas.Contains(c.Id))
+                                        {
+                                            <p class="nota" style="width:100%;">Ya hay partidos jugados en esta categoría la configuración ya no se puede modificar.</p>
+                                        }
+                                        else
+                                        {
+                                            <div class="campo" style="max-width:160px; margin-bottom:0;">
+                                                <label>Modalidad de Sets</label>
+                                                <select @bind="editConfigModalidadSets">
+                                                    <option value="1 Set">1 Set</option>
+                                                    <option value="2 de 3 Sets">2 de 3 Sets</option>
+                                                </select>
+                                            </div>
+                                            <div class="campo" style="max-width:140px; margin-bottom:0;">
+                                                <label>Puntos para ganar un set</label>
+                                                <input type="number" min="1" @bind="editConfigPuntosJuego" />
+                                            </div>
+                                            <div class="campo" style="max-width:140px; margin-bottom:0;">
+                                                <label>Puntos límite (tope absoluto)</label>
+                                                <input type="number" min="1" @bind="editConfigPuntosLimite" />
+                                            </div>
+                                        }
+
+                                        <div class="campo" style="max-width:220px; margin-bottom:0;">
+                                            <label>Rango de edad</label>
+                                            <select @bind="editConfigEdadRestringida">
+                                                <option value="False">Cualquier edad</option>
+                                                <option value="True">Rango de años de nacimiento</option>
+                                            </select>
+                                        </div>
+
+                                        @if (editConfigEdadRestringida)
+                                        {
+                                            <div class="campo" style="max-width:130px; margin-bottom:0;">
+                                                <label>Año de nacimiento minimo</label>
+                                                <input type="number" @bind="editConfigAnioMin" />
+                                            </div>
+                                            <div class="campo" style="max-width:130px; margin-bottom:0;">
+                                                <label>Año de nacimiento maximo</label>
+                                                <input type="number" @bind="editConfigAnioMax" />
+                                            </div>
+                                        }
+
+                                        @if (c.Formato == "Jornadas")
+                                        {
+                                            <div class="campo" style="max-width:180px; margin-bottom:0;">
+                                                <label>Veces que se enfrentan todos</label>
+                                                <input type="number" min="1" @bind="editConfigNumeroVueltas" />
+                                            </div>
+                                        }
+
+                                        @if (c.Formato == "Eliminatoria")
+                                        {
+                                            <div class="campo" style="max-width:150px; margin-bottom:0;">
+                                                <label>Cantidad de sembrados</label>
+                                                <select @bind="editConfigCantidadSembrados">
+                                                    <option value="0">Sin sembrados</option>
+                                                    <option value="2">2</option>
+                                                    <option value="4">3/4</option>
+                                                    <option value="8">5/8</option>
+                                                    <option value="16">9/16</option>
+                                                </select>
+                                            </div>
+                                        }
+
+                                        @if (c.Formato == "GruposFaseFinal")
+                                        {
+                                            <div class="campo" style="max-width:150px; margin-bottom:0;">
+                                                <label>Clasificados por grupo</label>
+                                                <input type="number" min="1" @bind="editConfigClasificadosPorGrupo" />
+                                            </div>
+
+                                            @if (categoriasFaseFinalIniciadas.Contains(c.Id))
+                                            {
+                                                <p class="nota" style="flex-basis:100%;">Puntaje y sets de Fase Final ya no se pueden cambiar, ya hay partidos de fase final jugados.</p>
+                                            }
+                                            else
+                                            {
+                                                <div class="campo" style="max-width:170px; margin-bottom:0;">
+                                                    <label>Sets en Fase Final</label>
+                                                    <select @bind="editConfigModalidadSetsFinal">
+                                                        <option value="1 Set">1 Set</option>
+                                                        <option value="2 de 3 Sets">2 de 3 Sets</option>
+                                                    </select>
+                                                </div>
+                                                <div class="campo" style="max-width:150px; margin-bottom:0;">
+                                                    <label>Puntos para ganar set (Fase Final)</label>
+                                                    <input type="number" min="1" @bind="editConfigPuntosJuegoFinal" />
+                                                </div>
+                                                <div class="campo" style="max-width:150px; margin-bottom:0;">
+                                                    <label>Puntos límite (Fase Final)</label>
+                                                    <input type="number" min="1" @bind="editConfigPuntosLimiteFinal" />
+                                                </div>
+                                            }
+                                        }
+
+                                        <button class="btn btn-primary" @onclick="() => GuardarConfigCategoria(c.Id, c.Formato)">Guardar</button>
+                                        <button class="btn btn-ghost" @onclick="() => categoriaEditandoConfigId = null">Cancelar</button>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        }
+        else
+        {
+            <p class="vacio">Este torneo todavía no tiene categorías.</p>
+        }
+    </div>
+
+    <div class="tarjeta">
+        <h2>Agregar categoría</h2>
+        <div class="campos-fila">
+            <div class="campo" style="max-width:140px;">
+                <label>Nombre categoría</label>
+                <input @bind="nuevaCatNombre" placeholder="Ej. 17-19" />
+            </div>
+            <div class="campo" style="max-width:130px;">
+                <label>Modalidad</label>
+                <select @bind="nuevaCatModalidad" @bind:after="OnModalidadCambiada">
+                    <option value="Singles">Singles</option>
+                    <option value="Dobles">Dobles</option>
+                </select>
+            </div>
+            <div class="campo" style="max-width:130px;">
+                <label>Rama</label>
+                <select @bind="nuevaCatRama">
+                    <option value="Varonil">Varonil</option>
+                    <option value="Femenil">Femenil</option>
+                    @if (nuevaCatModalidad == "Dobles")
+                    {
+                        <option value="Mixto">Mixto</option>
+                    }
+                </select>
+            </div>
+            <div class="campo" style="max-width:190px;">
+                <label>Formato</label>
+                <p class="nota" style="margin-top:8px;">@NombreFormato(modalidadTorneo) (definido por el torneo)</p>
+            </div>
+            <div class="campo">
+                <button class="btn btn-primary" @onclick="AgregarCategoria">Agregar</button>
+            </div>
+        </div>
+
+        @if (!string.IsNullOrEmpty(mensaje))
+        {
+            <p class="@(esExito ? "mensaje-exito" : "mensaje-error")">@mensaje</p>
+        }
+    </div>
+</div>
+
+@code {
+    private string editNombre = "";
+    private DateOnly editFecha;
+    private List<Categoria>? categoriasDelTorneoActivo;
+
+    private string nuevaCatNombre = "";
+    private string nuevaCatModalidad = "Singles";
+    private string nuevaCatRama = "Varonil";
+    private string modalidadTorneo = "GruposFaseFinal";
+    private string mensaje = "";
+    private bool esExito = false;
+
+    private Dictionary<int, Configuracion> configPorCategoria = new();
+    private int? categoriaEditandoConfigId;
+    private string editConfigModalidadSets = "2 de 3 Sets";
+    private int? editConfigNumeroVueltas;
+    private int? editConfigCantidadSembrados;
+    private int editConfigClasificadosPorGrupo = 2;
+
+    private bool editConfigEdadRestringida;
+    private int? editConfigAnioMin;
+    private int? editConfigAnioMax;
+
+    private string editConfigModalidadSetsFinal = "2 de 3 Sets";
+    private int editConfigPuntosJuegoFinal = 21;
+    private int editConfigPuntosLimiteFinal = 30;
+    private HashSet<int> categoriasFaseFinalIniciadas = new();
+
+    private HashSet<int> categoriasIniciadas = new();
+    private int editConfigPuntosJuego = 21;
+    private int editConfigPuntosLimite = 30;
+
+    private static string NombreFormato(string formato) => formato switch
+    {
+        "GruposFaseFinal" => "Grupos + Fase Final",
+        "Eliminatoria" => "Eliminatoria directa",
+        "Jornadas" => "Jornadas",
+        _ => formato
+    };
+
+    private static string ClaseBadgeFormato(string formato) => formato switch
+    {
+        "GruposFaseFinal" => "badge-formato-grupos",
+        "Eliminatoria" => "badge-formato-eliminatoria",
+        "Jornadas" => "badge-formato-jornadas",
+        _ => "badge-planeado"
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (TorneoActual.TorneoId == null) return;
+        await CargarDatos();
+    }
+
+    private async Task CargarDatos()
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        var torneoId = TorneoActual.TorneoId!.Value;
+
+        var torneo = await db.Torneos.FindAsync(torneoId);
+        if (torneo != null)
+        {
+            editNombre = torneo.Nombre;
+            editFecha = torneo.Fecha;
+        }
+        modalidadTorneo = torneo?.Modalidad ?? "GruposFaseFinal";
+
+        categoriasDelTorneoActivo = await db.Categorias.Where(c => c.TorneoId == torneoId).ToListAsync();
+
+        var catIds = categoriasDelTorneoActivo.Select(c => c.Id).ToList();
+        configPorCategoria = await db.Configuracions
+            .Where(cfg => catIds.Contains(cfg.CategoriaId))
+            .ToDictionaryAsync(cfg => cfg.CategoriaId);
+
+        categoriasIniciadas = (await db.Partidos
+            .Where(p => catIds.Contains(p.CategoriaId) && p.Estado == "Jugado")
+            .Select(p => p.CategoriaId)
+            .Distinct()
+            .ToListAsync()).ToHashSet();
+
+        categoriasFaseFinalIniciadas = (await db.Partidos
+            .Where(p => catIds.Contains(p.CategoriaId) && p.Fase != "Grupos" && p.Fase != "Liga" && p.Estado == "Jugado")
+            .Select(p => p.CategoriaId)
+            .Distinct()
+            .ToListAsync()).ToHashSet();
+    }
+
+    private async Task GuardarEdicionTorneo()
+    {
+        mensaje = "";
+        using var db = await DbFactory.CreateDbContextAsync();
+        var torneo = await db.Torneos.FindAsync(TorneoActual.TorneoId!.Value);
+        if (torneo == null) return;
+
+        torneo.Nombre = editNombre;
+        torneo.Fecha = editFecha;
+
+        await db.SaveChangesAsync();
+
+        TorneoActual.EntrarATorneo(torneo.Id, torneo.Nombre);
+        mensaje = "Cambios guardados.";
+        esExito = true;
+    }
+
+    private async Task AgregarCategoria()
+    {
+        mensaje = "";
+
+        bool confirmado = await JS.InvokeAsync<bool>("confirm",
+            $"¿Crear la categoría '{nuevaCatNombre}' - {nuevaCatModalidad}, {nuevaCatRama}?");
+        if (!confirmado) return;
+
+        esExito = false;
+
+        if (string.IsNullOrWhiteSpace(nuevaCatNombre))
+        {
+            mensaje = "Ponle un nombre a la categoría.";
+            return;
+        }
+        if (nuevaCatRama == "Mixto" && nuevaCatModalidad == "Singles")
+        {
+            mensaje = "Mixto solo aplica en Dobles.";
+            return;
+        }
+
+        using var db = await DbFactory.CreateDbContextAsync();
+
+        var nuevaCategoria = new Categoria
+        {
+            TorneoId = TorneoActual.TorneoId!.Value,
+            Nombre = nuevaCatNombre,
+            Modalidad = nuevaCatModalidad,
+            Rama = nuevaCatRama,
+            Formato = modalidadTorneo
+        };
+        db.Categorias.Add(nuevaCategoria);
+
+        try
+        {
+            await db.SaveChangesAsync();
+        }
+        catch (DbUpdateException)
+        {
+            mensaje = "Ya existe una categoría idéntica en este torneo.";
+            return;
+        }
+
+        db.Configuracions.Add(new Configuracion
+        {
+            CategoriaId = nuevaCategoria.Id,
+            ModalidadSets = "2 de 3 Sets",
+            PuntosJuego = 21,
+            PuntosLimite = 30
+        });
+        await db.SaveChangesAsync();
+
+        nuevaCatNombre = "";
+        mensaje = "Categoría agregada.";
+        esExito = true;
+        await CargarDatos();
+    }
+
+    private async Task EliminarCategoria(Categoria categoria)
+    {
+        mensaje = "";
+
+        bool confirmado = await JS.InvokeAsync<bool>("confirm",
+            $"¿Eliminar la categoría '{categoria.Nombre} {categoria.Modalidad} {categoria.Rama}' por completo? Esto borra grupos, atletas inscritos, partidos y ranking de este torneo.");
+        if (!confirmado) return;
+
+        using var db = await DbFactory.CreateDbContextAsync();
+        using var transaccion = await db.Database.BeginTransactionAsync();
+
+        try
+        {
+            var competidorIds = await db.Competidores.Where(c => c.CategoriaId == categoria.Id).Select(c => c.Id).ToListAsync();
+            var partidoIds = await db.Partidos.Where(p => p.CategoriaId == categoria.Id).Select(p => p.Id).ToListAsync();
+
+            var byesABorrar = await db.ByesFaseFinal.Where(b => b.CategoriaId == categoria.Id).ToListAsync();
+            db.ByesFaseFinal.RemoveRange(byesABorrar);
+
+            var setsABorrar = await db.SetsPartidos.Where(s => partidoIds.Contains(s.PartidoId)).ToListAsync();
+            db.SetsPartidos.RemoveRange(setsABorrar);
+
+            var partidosABorrar = await db.Partidos.Where(p => p.CategoriaId == categoria.Id).ToListAsync();
+            db.Partidos.RemoveRange(partidosABorrar);
+
+            var integrantesABorrar = await db.CompetidorIntegrantes.Where(ci => competidorIds.Contains(ci.CompetidorId)).ToListAsync();
+            db.CompetidorIntegrantes.RemoveRange(integrantesABorrar);
+
+            var competidoresABorrar = await db.Competidores.Where(c => c.CategoriaId == categoria.Id).ToListAsync();
+            db.Competidores.RemoveRange(competidoresABorrar);
+
+            var rankingABorrar = await db.RankingHistorials.Where(r => r.CategoriaId == categoria.Id).ToListAsync();
+            db.RankingHistorials.RemoveRange(rankingABorrar);
+
+            var gruposABorrar = await db.Grupos.Where(g => g.CategoriaId == categoria.Id).ToListAsync();
+            db.Grupos.RemoveRange(gruposABorrar);
+
+            await db.SaveChangesAsync();
+
+            var cat = await db.Categorias.FindAsync(categoria.Id);
+            if (cat != null) db.Categorias.Remove(cat);
+            await db.SaveChangesAsync();
+
+            await transaccion.CommitAsync();
+        }
+        catch
+        {
+            await transaccion.RollbackAsync();
+            mensaje = "Ocurrió un error al eliminar la categoría. No se borró nada.";
+            esExito = false;
+            return;
+        }
+
+        mensaje = "Categoría eliminada.";
+        esExito = true;
+        await CargarDatos();
+    }
+
+    private void OnModalidadCambiada()
+    {
+        if (nuevaCatModalidad == "Singles" && nuevaCatRama == "Mixto")
+        {
+            nuevaCatRama = "Varonil";
+        }
+    }
+
+    private void AbrirEdicionConfig(Categoria categoria)
+    {
+        categoriaEditandoConfigId = categoria.Id;
+        var cfg = configPorCategoria.GetValueOrDefault(categoria.Id);
+        editConfigModalidadSets = cfg?.ModalidadSets ?? "2 de 3 Sets";
+        editConfigPuntosJuego = cfg?.PuntosJuego ?? 21;
+        editConfigPuntosLimite = cfg?.PuntosLimite ?? 30;
+        editConfigNumeroVueltas = cfg?.NumeroVueltas ?? 1;
+        editConfigCantidadSembrados = cfg?.CantidadSembrados ?? 0;
+        editConfigClasificadosPorGrupo = categoria.ClasificadosPorGrupo ?? 2;
+        editConfigModalidadSetsFinal = cfg?.ModalidadSetsFinal ?? cfg?.ModalidadSets ?? "2 de 3 Sets";
+        editConfigPuntosJuegoFinal = cfg?.PuntosJuegoFinal ?? cfg?.PuntosJuego ?? 21;
+        editConfigPuntosLimiteFinal = cfg?.PuntosLimiteFinal ?? cfg?.PuntosLimite ?? 30;
+        editConfigEdadRestringida = cfg?.AnioNacimientoMin != null || cfg?.AnioNacimientoMax != null;
+        editConfigAnioMin = cfg?.AnioNacimientoMin;
+        editConfigAnioMax = cfg?.AnioNacimientoMax;
+    }
+
+    private async Task GuardarConfigCategoria(int categoriaId, string formato)
+    {
+        mensaje = ""; esExito = false;
+
+        bool iniciada = categoriasIniciadas.Contains(categoriaId);
+
+        if (!iniciada && editConfigPuntosLimite < editConfigPuntosJuego)
+        {
+            mensaje = "El límite no puede ser menos a los puntos para ganar.";
+            return;
+        }
+
+        if (editConfigEdadRestringida && (editConfigAnioMin == null || editConfigAnioMax == null || editConfigAnioMin > editConfigAnioMax))
+        {
+            mensaje = "Revisa el rango de años: falta un valor o el mínimo es mayor al máximo.";
+            return;
+        }
+
+        var partes = new List<string>();
+
+        if (iniciada)
+        {
+            partes.Add("Puntaje y sets no se pueden cambiar, ya hay partidos jugados");
+        }
+        else
+        {
+            partes.Add($"{editConfigModalidadSets}, a {editConfigPuntosJuego} puntos, tope {editConfigPuntosLimite}");
+        }
+
+        if (formato == "Jornadas")
+        {
+            partes.Add($"Veces que se enfrentan todos: {editConfigNumeroVueltas}");
+        }
+        else if (formato == "Eliminatoria")
+        {
+            partes.Add($"Sembrados: {editConfigCantidadSembrados}");
+        }
+        else if (formato == "GruposFaseFinal")
+        {
+            partes.Add($"Clasificados por grupo: {editConfigClasificadosPorGrupo}");
+
+            bool faseFinalIniciada = categoriasFaseFinalIniciadas.Contains(categoriaId);
+            partes.Add(faseFinalIniciada
+                ? "Puntaje y sets de Fase Final ya no se pueden cambiar, ya hay partidos jugados ahí"
+                : $"Fase Final: {editConfigModalidadSetsFinal}, a {editConfigPuntosJuegoFinal} puntos, tope {editConfigPuntosLimiteFinal}");
+        }
+
+        partes.Add(editConfigEdadRestringida
+            ? $"Edad: nacidos entre {editConfigAnioMin} y {editConfigAnioMax}"
+            : "Edad: cualquiera");
+
+        bool confirmado = await JS.InvokeAsync<bool>("confirm",
+        $"¿Guardar esta configuración? {string.Join(". ", partes)}.");
+        if (!confirmado) return;
+
+        using var db = await DbFactory.CreateDbContextAsync();
+        var config = await db.Configuracions.FirstOrDefaultAsync(c => c.CategoriaId == categoriaId);
+
+        if (config == null)
+        {
+            config = new Configuracion { CategoriaId = categoriaId };
+            db.Configuracions.Add(config);
+        }
+
+        // El puntaje y los sets quedan fijos una vez que ya se jugó algo en la
+        // categoría, porque afectan cómo se resuelven los empates.
+        if (!iniciada)
+        {
+            config.ModalidadSets = editConfigModalidadSets;
+            config.PuntosJuego = editConfigPuntosJuego;
+            config.PuntosLimite = editConfigPuntosLimite;
+        }
+
+        config.NumeroVueltas = editConfigNumeroVueltas;
+        config.CantidadSembrados = editConfigCantidadSembrados;
+        config.AnioNacimientoMin = editConfigEdadRestringida ? editConfigAnioMin : null;
+        config.AnioNacimientoMax = editConfigEdadRestringida ? editConfigAnioMax : null;
+
+        if (formato == "GruposFaseFinal")
+        {
+            var categoria = await db.Categorias.FindAsync(categoriaId);
+            if (categoria != null)
+                categoria.ClasificadosPorGrupo = editConfigClasificadosPorGrupo;
+
+            if (!categoriasFaseFinalIniciadas.Contains(categoriaId))
+            {
+                config.ModalidadSetsFinal = editConfigModalidadSetsFinal;
+                config.PuntosJuegoFinal = editConfigPuntosJuegoFinal;
+                config.PuntosLimiteFinal = editConfigPuntosLimiteFinal;
+            }
+        }
+
+        await db.SaveChangesAsync();
+
+        categoriaEditandoConfigId = null;
+        mensaje = "Configuración guardada.";
+        esExito = true;
+        await CargarDatos();
+    }
+}

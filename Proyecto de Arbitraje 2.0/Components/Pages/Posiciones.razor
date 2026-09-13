@@ -1,0 +1,725 @@
+﻿@page "/posiciones"
+@implements IDisposable
+@using Microsoft.AspNetCore.Authorization
+@using ProyectoArbitraje.Data
+@using ProyectoArbitraje.Models
+@using ProyectoArbitraje.Services
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<TorneoContext> DbFactory
+@inject TorneoActualService TorneoActual
+@inject TorneoEventBus EventBus
+@inject AuthenticationStateProvider AuthStateProvider
+@inject FaseFinalService FaseFinalSvc
+@inject IJSRuntime JS
+
+<PageTitle>Posiciones</PageTitle>
+
+@if (TorneoActual.TorneoId == null)
+{
+    <div class="pagina">
+        <p class="vacio">No hay un torneo activo. <a href="">Ve a Inicio</a> y entra a uno primero.</p>
+    </div>
+    return;
+}
+
+<div class="pagina">
+    <div class="tarjeta-marcador pagina-header">
+        <h1>Posiciones - @TorneoActual.NombreTorneo</h1>
+    </div>
+
+    <div class="tarjeta">
+        @if (categorias == null)
+        {
+            <p class="vacio">Cargando...</p>
+        }
+        else if (!categorias.Any())
+        {
+            <p class="vacio">Este torneo todavía no tiene categorías.</p>
+        }
+        else
+        {
+            <div class="campo" style="max-width:400px;">
+                <select @bind="categoriaSeleccionadaId" @bind:after="CargarPosiciones">
+                    <option value="0">-- Selecciona categoría --</option>
+                    @foreach (var c in categorias)
+                    {
+                        <option value="@c.Id">@c.Nombre - @c.Modalidad - @c.Rama (@c.Formato)</option>
+                    }
+                </select>
+            </div>
+        }
+    </div>
+
+    @if (categoriaActiva != null)
+    {
+        @if (categoriaActiva.Formato == "GruposFaseFinal")
+        {
+            @if (podioGeneral != null && podioGeneral.Any())
+            {
+                <div class="tarjeta">
+                    <h2>Podio (Fase Final)</h2>
+                    @foreach (var (puesto, entrada) in podioGeneral)
+                    {
+                        <div class="resultado-fila">
+                            <span class="resultado-puesto @(puesto == "Campeón" ? "campeon" : puesto == "Subcampeón" ? "subcampeon" : "otro")">
+                                @(puesto == "Campeón" ? "🏆 " : "")@puesto
+                            </span>
+                            <span class="resultado-nombres">@entrada.Nombres <span class="nota">(@entrada.Municipio)</span></span>
+                        </div>
+                    }
+                </div>
+            }
+
+            <h2>Posiciones de grupos</h2>
+            @if (!tablasPorGrupo.Any())
+            {
+                <p class="vacio">Esta categoría todavía no tiene grupos con atletas.</p>
+            }
+            else
+            {
+                <div class="posiciones-grid">
+                    @foreach (var grupo in tablasPorGrupo.Keys)
+                    {
+                        <div class="tarjeta">
+                            <h3>Grupo @grupo</h3>
+                            @if (grupoTerminado.GetValueOrDefault(grupo) && HayEmpatesPendientes(tablasPorGrupo[grupo]))
+                            {
+                                <p class="mensaje-aviso">
+                                    Hay competidores empatados en PG/±Sets/±Puntos.
+                                    @if (!esSoloLectura)
+                                    {
+                                        <button class="btn btn-ghost" @onclick="() => SortearEmpates(tablasPorGrupo[grupo], null)">Sortear empates (ciego)</button>
+                                    }
+                                </p>
+                            }
+                            @RenderTabla(tablasPorGrupo[grupo])
+                        </div>
+                    }
+                </div>
+            }
+        }
+        else if (categoriaActiva.Formato == "Jornadas")
+        {
+            @if (podioBandas.Any())
+            {
+                <h2>Podio por banda</h2>
+                <div class="posiciones-grid">
+                    @foreach (var banda in podioBandas)
+                    {
+                        <div class="tarjeta">
+                            <h3>Banda @banda.Numero</h3>
+                            @if (banda.Campeon != null)
+                            {
+                                <div class="resultado-fila">
+                                    <span class="resultado-puesto campeon">🏆 Campeón</span>
+                                    <span class="resultado-nombres">@banda.Campeon.Nombres <span class="nota">(@banda.Campeon.Municipio)</span></span>
+                                </div>
+                            }
+                            @if (banda.Subcampeon != null)
+                            {
+                                <div class="resultado-fila">
+                                    <span class="resultado-puesto subcampeon">Subcampeón</span>
+                                    <span class="resultado-nombres">@banda.Subcampeon.Nombres <span class="nota">(@banda.Subcampeon.Municipio)</span></span>
+                                </div>
+                            }
+                            @foreach (var semi in banda.Semifinalistas)
+                            {
+                                <div class="resultado-fila">
+                                    <span class="resultado-puesto otro">Semifinalista</span>
+                                    <span class="resultado-nombres">@semi.Nombres <span class="nota">(@semi.Municipio)</span></span>
+                                </div>
+                            }
+                            @if (banda.Campeon == null)
+                            {
+                                <p class="nota">Todavía sin terminar.</p>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+
+            <div class="tarjeta">
+                <h2>Posiciones de jornadas</h2>
+                @if (!tablaJornadas.Any())
+                {
+                    <p class="vacio">Sin atletas registrados.</p>
+                }
+                else
+                {
+                    @if (ligaTerminada && HayEmpatesPendientes(tablaJornadas))
+                    {
+                        <p class="mensaje-aviso">
+                            Hay competidores empatados en PG/±Sets/±Puntos.
+                            @if (!esSoloLectura)
+                            {
+                                <button class="btn btn-ghost" @onclick="() => SortearEmpates(tablaJornadas, null)">Sortear empates (ciego)</button>
+                            }  
+                        </p>
+                    }
+                    @RenderTabla(tablaJornadas)
+                }
+            </div>
+        }
+        else if (categoriaActiva.Formato == "RoundRobin")
+        {
+            @if (podioGeneral != null && podioGeneral.Any())
+            {
+                <div class="tarjeta">
+                    <h2>Podio</h2>
+                    @foreach (var (puesto, entrada) in podioGeneral)
+                    {
+                        <div class="resultado-fila">
+                            <span class="resultado-puesto @(puesto == "Campeón" ? "campeon" : puesto == "Subcampeón" ? "subcampeon" : "otro")">
+                                @(puesto == "Campeón" ? "🏆 " : "")@puesto
+                            </span>
+                            <span class="resultado-nombres">@entrada.Nombres <span class="nota">(@entrada.Municipio)</span></span>
+                        </div>
+                    }
+                </div>
+            }
+
+            <div class="tarjeta">
+                <h2>Posiciones (todos contra todos)</h2>
+                @if (!tablaRoundRobin.Any())
+                {
+                    <p class="vacio">Sin atletas registrados.</p>
+                }
+                else
+                {
+                    @if (roundRobinTerminado && HayEmpatesPendientes(tablaRoundRobin))
+                    {
+                        <p class="mensaje-aviso">
+                            Hay competidores empatados en PG/±Sets/±Puntos.
+                            @if (!esSoloLectura)
+                            {
+                                <button class="btn btn-ghost" @onclick="() => SortearEmpates(tablaRoundRobin, null)">Sortear empates</button>
+                            }
+                        </p>
+                    }
+                    @RenderTabla(tablaRoundRobin)
+
+                    @if (roundRobinTerminado && (podioGeneral == null || !podioGeneral.Any()) && !esSoloLectura)
+                    {
+                        <button class="btn btn-primary" style="margin-top:12px;" @onclick="CerrarCategoriaRoundRobin">Cerrar categoría</button>
+                    }
+                }
+            </div>
+        }
+        else if (categoriaActiva.Formato == "Eliminatoria")
+        {
+            @if (podioEliminatoria != null && podioEliminatoria.Any())
+            {
+                <div class="tarjeta">
+                    <h2>Podio</h2>
+                    @foreach (var (puesto, entrada) in podioEliminatoria)
+                    {
+                        <div class="resultado-fila">
+                            <span class="resultado-puesto @(puesto == "Campeón" ? "campeon" : puesto == "Subcampeón" ? "subcampeon" : "otro")">
+                                @(puesto == "Campeón" ? "🏆 " : "")@puesto
+                            </span>
+                            <span class="resultado-nombres">@entrada.Nombres <span class="nota">(@entrada.Municipio)</span></span>
+                        </div>
+                    }
+                </div>
+            }
+            else
+            {
+                <div class="tarjeta">
+                    <p class="vacio">Todavía no hay resultados de la llave.</p>
+                </div>
+            }
+
+            <div class="tarjeta">
+                <h2>Resto de atletas</h2>
+                @if (!tablaGeneralEliminatoria.Any())
+                {
+                    <p class="vacio">Sin atletas registrados.</p>
+                }
+                else
+                {
+                    @RenderTabla(tablaGeneralEliminatoria)
+                }
+            </div>
+        }
+    }
+</div>
+
+@code {
+    private List<Categoria>? categorias;
+    private int categoriaSeleccionadaId;
+    private Categoria? categoriaActiva;
+
+    private Dictionary<string, List<PosicionFila>> tablasPorGrupo = new();
+    private Dictionary<string, bool> grupoTerminado = new();
+    private List<(string Puesto, PodioEntrada Entrada)>? podioGeneral;
+
+    private List<PosicionFila> tablaJornadas = new();
+    private bool ligaTerminada;
+
+    private List<PosicionFila> tablaRoundRobin = new();
+    private bool roundRobinTerminado;
+
+    private List<BandaPodio> podioBandas = new();
+
+    private List<PosicionFila> tablaGeneralEliminatoria = new();
+    private List<(string Puesto, PodioEntrada Entrada)>? podioEliminatoria;
+
+    private string EtiquetaCompetidor => categoriaActiva?.Modalidad == "Dobles" ? "Pareja" : "Atleta";
+
+    private class PosicionFila
+    {
+        public int CompetidorId { get; set; }
+        public string Nombre { get; set; } = "";
+        public string Equipo { get; set; } = "";
+        public int Pg { get; set; }
+        public int Pp { get; set; }
+        public int Sg { get; set; }
+        public int Sp { get; set; }
+        public int Ds => Sg - Sp;
+        public int Pf { get; set; }
+        public int Pc { get; set; }
+        public int Dp => Pf - Pc;
+        public int? OrdenDesempate { get; set; }
+    }
+
+    private class PodioEntrada
+    {
+        public string Nombres { get; set; } = "";
+        public string Municipio { get; set; } = "";
+    }
+
+    private class BandaPodio
+    {
+        public int Numero { get; set; }
+        public PodioEntrada? Campeon { get; set; }
+        public PodioEntrada? Subcampeon { get; set; }
+        public List<PodioEntrada> Semifinalistas { get; set; } = new();
+    }
+
+    private class StatsAcumuladas
+    {
+        public int Pg, Pp, Sg, Sp, Pf, Pc;
+    }
+
+    private bool esSoloLectura;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        esSoloLectura = !authState.User.IsInRole("Admin");
+
+        using var db = await DbFactory.CreateDbContextAsync();
+        categorias = await db.Categorias
+            .Where(c => c.TorneoId == TorneoActual.TorneoId)
+            .ToListAsync();
+
+        EventBus.OnCambio += ManejarCambioExterno;
+    }
+
+    private async void ManejarCambioExterno()
+    {
+        await InvokeAsync(async () =>
+        {
+            await CargarPosiciones();
+            StateHasChanged();
+        });
+    }
+
+    public void Dispose()
+    {
+        EventBus.OnCambio -= ManejarCambioExterno;
+    }
+
+    private static Dictionary<int, StatsAcumuladas> CalcularStats(List<Partido> partidosJugados)
+    {
+        var stats = new Dictionary<int, StatsAcumuladas>();
+
+        StatsAcumuladas Obtener(int competidorId)
+        {
+            if (!stats.TryGetValue(competidorId, out var s))
+            {
+                s = new StatsAcumuladas();
+                stats[competidorId] = s;
+            }
+            return s;
+        }
+
+        foreach (var p in partidosJugados)
+        {
+            var sA = Obtener(p.CompetidorAid);
+            var sB = Obtener(p.CompetidorBid);
+
+            if (p.GanadorId == p.CompetidorAid) { sA.Pg++; sB.Pp++; }
+            else if (p.GanadorId == p.CompetidorBid) { sB.Pg++; sA.Pp++; }
+
+            foreach (var s in p.SetsPartidos)
+            {
+                if (s.PuntosA > s.PuntosB) sA.Sg++; else if (s.PuntosB > s.PuntosA) sA.Sp++;
+                if (s.PuntosB > s.PuntosA) sB.Sg++; else if (s.PuntosA > s.PuntosB) sB.Sp++;
+                sA.Pf += s.PuntosA; sA.Pc += s.PuntosB;
+                sB.Pf += s.PuntosB; sB.Pc += s.PuntosA;
+            }
+        }
+
+        return stats;
+    }
+
+    private static PosicionFila MapFilaConStats(Competidore c, Dictionary<int, StatsAcumuladas> stats)
+    {
+        var s = stats.GetValueOrDefault(c.Id) ?? new StatsAcumuladas();
+        return new PosicionFila
+        {
+            CompetidorId = c.Id,
+            Nombre = string.Join(" / ", c.CompetidorIntegrantes.Select(ci => ci.Atleta.Nombre)),
+            Equipo = string.Join(" / ", c.CompetidorIntegrantes.Select(ci => ci.Atleta.Municipio.Nombre).Distinct()),
+            Pg = s.Pg,
+            Pp = s.Pp,
+            Sg = s.Sg,
+            Sp = s.Sp,
+            Pf = s.Pf,
+            Pc = s.Pc,
+            OrdenDesempate = c.OrdenDesempate
+        };
+    }
+
+    private async Task<bool> FaseCompletaAsync(TorneoContext db, string fase, int? grupoId)
+    {
+        var query = db.Partidos.Where(p => p.CategoriaId == categoriaActiva!.Id && p.Fase == fase);
+        if (grupoId != null) query = query.Where(p => p.GrupoId == grupoId);
+
+        bool hayPartidos = await query.AnyAsync();
+        if (!hayPartidos) return false;
+
+        bool hayPendientes = await query.AnyAsync(p => p.Estado != "Jugado");
+        return !hayPendientes;
+    }
+
+    private async Task<List<(string Puesto, PodioEntrada Entrada)>> ArmarPodioDesdeHistorialAsync(TorneoContext db, int categoriaId)
+    {
+        var integrantes = await db.CompetidorIntegrantes
+            .Where(ci => ci.Competidor.CategoriaId == categoriaId)
+            .Select(ci => new { ci.AtletaId, ci.CompetidorId })
+            .ToListAsync();
+
+        var competidorIdPorAtleta = integrantes.ToDictionary(x => x.AtletaId, x => x.CompetidorId);
+
+        var historial = await db.RankingHistorials
+            .Where(r => r.CategoriaId == categoriaId)
+            .Include(r => r.Atleta).ThenInclude(a => a.Municipio)
+            .ToListAsync();
+
+        if (!historial.Any()) return new();
+
+        string Etiqueta(int posicion) => posicion switch
+        {
+            1 => "Campeón",
+            2 => "Subcampeón",
+            3 => "Semifinalista",
+            5 => "Cuartofinalista",
+            9 => "Octavofinalista",
+            _ => $"Puesto {posicion}"
+        };
+
+        return historial
+            .GroupBy(r => competidorIdPorAtleta.GetValueOrDefault(r.AtletaId, -r.AtletaId))
+            .Select(g => new
+            {
+                Posicion = g.First().Posicion,
+                Entrada = new PodioEntrada
+                {
+                    Nombres = string.Join(" / ", g.Select(r => r.Atleta.Nombre)),
+                    Municipio = g.First().Atleta.Municipio?.Nombre ?? ""
+                }
+            })
+            .OrderBy(x => x.Posicion)
+            .Select(x => (Etiqueta(x.Posicion), x.Entrada))
+            .ToList();
+    }
+
+    private static PodioEntrada ArmarEntrada(Competidore c) => new PodioEntrada
+    {
+        Nombres = string.Join(" / ", c.CompetidorIntegrantes.Select(ci => ci.Atleta.Nombre)),
+        Municipio = c.CompetidorIntegrantes.Select(ci => ci.Atleta.Municipio != null ? ci.Atleta.Municipio.Nombre : "").FirstOrDefault() ?? ""
+    };
+
+    private static BandaPodio ArmarPodioBanda(int numeroBanda, List<Partido> partidos)
+    {
+        var resultado = new BandaPodio { Numero = numeroBanda };
+
+        var final = partidos.FirstOrDefault(p => p.Fase == "Final" && p.Estado == "Jugado");
+        if (final != null)
+        {
+            var ganador = final.GanadorId == final.CompetidorAid ? final.CompetidorA : final.CompetidorB;
+            var perdedor = final.GanadorId == final.CompetidorAid ? final.CompetidorB : final.CompetidorA;
+            resultado.Campeon = ArmarEntrada(ganador);
+            resultado.Subcampeon = ArmarEntrada(perdedor);
+        }
+
+        foreach (var sf in partidos.Where(p => p.Fase == "Semifinal" && p.Estado == "Jugado"))
+        {
+            var perdedor = sf.GanadorId == sf.CompetidorAid ? sf.CompetidorB : sf.CompetidorA;
+            resultado.Semifinalistas.Add(ArmarEntrada(perdedor));
+        }
+
+        return resultado;
+    }
+
+    private async Task CargarPosiciones()
+    {
+        tablasPorGrupo.Clear();
+        grupoTerminado.Clear();
+        podioGeneral = null;
+        tablaJornadas.Clear();
+        tablaRoundRobin.Clear();
+        podioBandas.Clear();
+        tablaGeneralEliminatoria.Clear();
+        podioEliminatoria = null;
+
+        if (categoriaSeleccionadaId == 0) { categoriaActiva = null; return; }
+
+        using var db = await DbFactory.CreateDbContextAsync();
+        categoriaActiva = categorias!.First(c => c.Id == categoriaSeleccionadaId);
+
+        if (categoriaActiva.Formato == "GruposFaseFinal")
+        {
+            var partidosGrupos = await db.Partidos
+                .Where(p => p.CategoriaId == categoriaActiva.Id && p.Fase == "Grupos" && p.Estado == "Jugado")
+                .Include(p => p.SetsPartidos)
+                .ToListAsync();
+            var stats = CalcularStats(partidosGrupos);
+
+            var competidores = await db.Competidores
+                .Where(c => c.CategoriaId == categoriaActiva.Id)
+                .Include(c => c.Grupo)
+                .Include(c => c.CompetidorIntegrantes).ThenInclude(ci => ci.Atleta).ThenInclude(a => a.Municipio)
+                .ToListAsync();
+
+            foreach (var g in competidores.Where(c => c.Grupo != null).GroupBy(c => c.Grupo!.Letra).OrderBy(g => g.Key))
+            {
+                var filasGrupo = g.Select(c => MapFilaConStats(c, stats)).ToList();
+                await ResolverEmpatesPorEnfrentamientoAsync(db, filasGrupo, "Grupos");
+
+                tablasPorGrupo[g.Key] = filasGrupo
+                    .OrderByDescending(f => f.Pg).ThenByDescending(f => f.Ds).ThenByDescending(f => f.Dp)
+                    .ThenBy(f => f.OrdenDesempate ?? int.MaxValue)
+                    .ToList();
+
+                grupoTerminado[g.Key] = await FaseCompletaAsync(db, "Grupos", g.First().Grupo!.Id);
+            }
+
+            podioGeneral = await ArmarPodioDesdeHistorialAsync(db, categoriaActiva.Id);
+        }
+        else if (categoriaActiva.Formato == "Jornadas")
+        {
+            var partidosLiga = await db.Partidos
+                .Where(p => p.CategoriaId == categoriaActiva.Id && p.Fase == "Liga" && p.Estado == "Jugado")
+                .Include(p => p.SetsPartidos)
+                .ToListAsync();
+            var stats = CalcularStats(partidosLiga);
+
+            var competidores = await db.Competidores
+                .Where(c => c.CategoriaId == categoriaActiva.Id)
+                .Include(c => c.CompetidorIntegrantes).ThenInclude(ci => ci.Atleta).ThenInclude(a => a.Municipio)
+                .ToListAsync();
+
+            var filasJornadas = competidores.Select(c => MapFilaConStats(c, stats)).ToList();
+            await ResolverEmpatesPorEnfrentamientoAsync(db, filasJornadas, "Liga");
+
+            tablaJornadas = filasJornadas
+                .OrderByDescending(f => f.Pg).ThenByDescending(f => f.Ds).ThenByDescending(f => f.Dp)
+                .ThenBy(f => f.OrdenDesempate ?? int.MaxValue)
+                .ToList();
+
+            ligaTerminada = await FaseCompletaAsync(db, "Liga", null);
+
+            var partidosBanda = await db.Partidos
+                .Where(p => p.CategoriaId == categoriaActiva.Id && p.Banda != null)
+                .Include(p => p.CompetidorA).ThenInclude(c => c.CompetidorIntegrantes).ThenInclude(ci => ci.Atleta).ThenInclude(a => a.Municipio)
+                .Include(p => p.CompetidorB).ThenInclude(c => c.CompetidorIntegrantes).ThenInclude(ci => ci.Atleta).ThenInclude(a => a.Municipio)
+                .ToListAsync();
+
+            podioBandas = partidosBanda
+                .GroupBy(p => p.Banda!.Value)
+                .OrderBy(g => g.Key)
+                .Select(g => ArmarPodioBanda(g.Key, g.ToList()))
+                .ToList();
+        }
+        else if (categoriaActiva.Formato == "RoundRobin")
+        {
+            var partidosRR = await db.Partidos
+                .Where(p => p.CategoriaId == categoriaActiva.Id && p.Fase == "Liga" && p.Estado == "Jugado")
+                .Include(p => p.SetsPartidos)
+                .ToListAsync();
+            var statsRR = CalcularStats(partidosRR);
+
+            var competidoresRR = await db.Competidores
+                .Where(c => c.CategoriaId == categoriaActiva.Id)
+                .Include(c => c.CompetidorIntegrantes).ThenInclude(ci => ci.Atleta).ThenInclude(a => a.Municipio)
+                .ToListAsync();
+
+            var filasRR = competidoresRR.Select(c => MapFilaConStats(c, statsRR)).ToList();
+            await ResolverEmpatesPorEnfrentamientoAsync(db, filasRR, "Liga");
+
+            tablaRoundRobin = filasRR
+                .OrderByDescending(f => f.Pg).ThenByDescending(f => f.Ds).ThenByDescending(f => f.Dp)
+                .ThenBy(f => f.OrdenDesempate ?? int.MaxValue)
+                .ToList();
+
+            roundRobinTerminado = await FaseCompletaAsync(db, "Liga", null);
+
+            podioGeneral = await ArmarPodioDesdeHistorialAsync(db, categoriaActiva.Id);
+
+        }
+        else if (categoriaActiva.Formato == "Eliminatoria")
+        {
+            var competidores = await db.Competidores
+                .Where(c => c.CategoriaId == categoriaActiva.Id)
+                .Include(c => c.CompetidorIntegrantes).ThenInclude(ci => ci.Atleta).ThenInclude(a => a.Municipio)
+                .ToListAsync();
+
+            tablaGeneralEliminatoria = competidores.Select(c => new PosicionFila
+            {
+                CompetidorId = c.Id,
+                Nombre = string.Join(" / ", c.CompetidorIntegrantes.Select(ci => ci.Atleta.Nombre)),
+                Equipo = string.Join(" / ", c.CompetidorIntegrantes.Select(ci => ci.Atleta.Municipio.Nombre).Distinct()),
+                Pg = c.Pg,
+                Pp = c.Pp,
+                Sg = c.Sg,
+                Sp = c.Sp,
+                Pf = c.Pf,
+                Pc = c.Pc
+            })
+            .OrderByDescending(f => f.Pg).ThenByDescending(f => f.Ds).ThenByDescending(f => f.Dp)
+            .ToList();
+
+            podioEliminatoria = await ArmarPodioDesdeHistorialAsync(db, categoriaActiva.Id);
+        }
+    }
+
+    private bool HayEmpatesPendientes(List<PosicionFila> tabla) =>
+        tabla.GroupBy(f => (f.Pg, f.Ds, f.Dp))
+             .Any(g => g.Count() > 1 && g.Any(f => f.OrdenDesempate == null));
+
+    private async Task ResolverEmpatesPorEnfrentamientoAsync(TorneoContext db, List<PosicionFila> tabla, string fase)
+    {
+        var gruposEmpatados = tabla
+            .GroupBy(f => (f.Pg, f.Ds, f.Dp))
+            .Where(g => g.Count() == 2 && g.Any(f => f.OrdenDesempate == null))
+            .ToList();
+
+        if (!gruposEmpatados.Any()) return;
+
+        bool huboCambios = false;
+
+        foreach (var grupo in gruposEmpatados)
+        {
+            var dos = grupo.ToList();
+            int idA = dos[0].CompetidorId;
+            int idB = dos[1].CompetidorId;
+
+            var partido = await db.Partidos.FirstOrDefaultAsync(p =>
+                p.Fase == fase && p.Estado == "Jugado" &&
+                ((p.CompetidorAid == idA && p.CompetidorBid == idB) || (p.CompetidorAid == idB && p.CompetidorBid == idA)));
+
+            if (partido?.GanadorId == null) continue;
+
+            int ganadorId = partido.GanadorId.Value;
+            int perdedorId = ganadorId == idA ? idB : idA;
+
+            var compGanador = await db.Competidores.FindAsync(ganadorId);
+            var compPerdedor = await db.Competidores.FindAsync(perdedorId);
+            if (compGanador != null) compGanador.OrdenDesempate = 1;
+            if (compPerdedor != null) compPerdedor.OrdenDesempate = 2;
+
+            dos.First(f => f.CompetidorId == ganadorId).OrdenDesempate = 1;
+            dos.First(f => f.CompetidorId == perdedorId).OrdenDesempate = 2;
+
+            huboCambios = true;
+        }
+
+        if (huboCambios) await db.SaveChangesAsync();
+    }
+
+    private async Task  CerrarCategoriaRoundRobin()
+    {
+        if (categoriaActiva == null) return;
+
+        bool confirmado = await JS.InvokeAsync<bool>("confirm",
+            "¿Cerrar esta categoría? Se otorgan los puntos del ranking según la tabla actual. No se puede deshacer.");
+        if (!confirmado) return;
+
+        var (ok, msg) = await FaseFinalSvc.CerrarCategoriaRoundRobinAsync(categoriaActiva.Id);
+
+        if (ok)
+        {
+            await CargarPosiciones();
+        }
+        else
+        {
+            await JS.InvokeVoidAsync("alert", msg);
+        }
+    }
+
+    private async Task SortearEmpates(List<PosicionFila> tabla, int? noUsado)
+    {
+        var gruposEmpatados = tabla
+            .GroupBy(f => (f.Pg, f.Ds, f.Dp))
+            .Where(g => g.Count() > 1)
+            .ToList();
+
+        if (!gruposEmpatados.Any()) return;
+
+        using var db = await DbFactory.CreateDbContextAsync();
+        var rnd = new Random();
+
+        foreach (var grupoEmpatado in gruposEmpatados)
+        {
+            var idsEmpatados = grupoEmpatado.Select(f => f.CompetidorId).ToList();
+            var valoresAleatorios = Enumerable.Range(1, idsEmpatados.Count).OrderBy(_ => rnd.Next()).ToList();
+
+            var competidoresDb = await db.Competidores.Where(c => idsEmpatados.Contains(c.Id)).ToListAsync();
+            for (int i = 0; i < idsEmpatados.Count; i++)
+                competidoresDb.First(c => c.Id == idsEmpatados[i]).OrdenDesempate = valoresAleatorios[i];
+        }
+
+        await db.SaveChangesAsync();
+        await CargarPosiciones();
+    }
+
+    private RenderFragment RenderTabla(List<PosicionFila> filas) => __builder =>
+    {
+        <table class="tabla-limpia">
+            <thead>
+                <tr>
+                    <th>@EtiquetaCompetidor</th>
+                    <th>Equipo</th>
+                    <th>PG</th>
+                    <th>PP</th>
+                    <th>SG</th>
+                    <th>SP</th>
+                    <th>±S</th>
+                    <th>PF</th>
+                    <th>PC</th>
+                    <th>±P</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var f in filas)
+                {
+                    <tr>
+                        <td>@f.Nombre</td>
+                        <td>@f.Equipo</td>
+                        <td>@f.Pg</td>
+                        <td>@f.Pp</td>
+                        <td>@f.Sg</td>
+                        <td>@f.Sp</td>
+                        <td>@f.Ds</td>
+                        <td>@f.Pf</td>
+                        <td>@f.Pc</td>
+                        <td>@f.Dp</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    };
+}

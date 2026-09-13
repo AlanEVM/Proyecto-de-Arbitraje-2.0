@@ -1,0 +1,1405 @@
+@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap');
+
+/* =====================================================================
+   TOKENS - paleta inspirada en cancha de bádminton / corcho del volante
+   ===================================================================== */
+:root {
+    --cancha: #0B4F4A;
+    --cancha-mid: #0F5F59;
+    --cancha-dark: #073835;
+    --linea: #F7F5EF;
+    --cork: #E8A33D;
+    --cork-dark: #C7852A;
+    --sombra: #1C2B29;
+    --falta: #C1443C;
+    --secundario: #2E6E8E;
+    --gris-borde: #DDD8CC;
+    --blanco: #FFFFFF;
+    --radio: 10px;
+    --sombra-caja: 0 1px 3px rgba(28, 43, 41, 0.08), 0 1px 2px rgba(28, 43, 41, 0.06);
+}
+
+html, body {
+    font-family: 'Inter', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    color: var(--sombra);
+    background: var(--linea);
+    margin: 0;
+}
+
+h1, h2, h3 {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    color: var(--sombra);
+    margin: 0 0 4px 0;
+}
+
+h1 {
+    font-size: 2.1rem;
+}
+
+h2 {
+    font-size: 1.5rem;
+    margin-top: 28px;
+}
+
+h3 {
+    font-size: 1.15rem;
+}
+
+a, .btn-link {
+    color: var(--secundario);
+}
+
+.btn-primary {
+    color: var(--sombra);
+    background-color: var(--cork);
+    border-color: var(--cork-dark);
+}
+
+.btn:focus, .btn:active:focus, .btn-link.nav-link:focus, .form-control:focus, .form-check-input:focus {
+    box-shadow: 0 0 0 0.1rem white, 0 0 0 0.25rem var(--secundario);
+}
+
+.content {
+    padding-top: 1.1rem;
+}
+
+h1:focus {
+    outline: none;
+}
+
+.valid.modified:not([type=checkbox]) {
+    outline: 1px solid var(--cancha);
+}
+
+.invalid {
+    outline: 1px solid var(--falta);
+}
+
+.validation-message {
+    color: var(--falta);
+}
+
+.blazor-error-boundary {
+    background: url(data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNTYiIGhlaWdodD0iNDkiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgeG1sbnM6eGxpbms9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkveGxpbmsiIG92ZXJmbG93PSJoaWRkZW4iPjxkZWZzPjxjbGlwUGF0aCBpZD0iY2xpcDAiPjxyZWN0IHg9IjIzNSIgeT0iNTEiIHdpZHRoPSI1NiIgaGVpZ2h0PSI0OSIvPjwvY2xpcFBhdGg+PC9kZWZzPjxnIGNsaXAtcGF0aD0idXJsKCNjbGlwMCkiIHRyYW5zZm9ybT0idHJhbnNsYXRlKC0yMzUgLTUxKSI+PHBhdGggZD0iTTI2My41MDYgNTFDMjY0LjcxNyA1MSAyNjUuODEzIDUxLjQ4MzcgMjY2LjYwNiA1Mi4yNjU4TDI2Ny4wNTIgNTIuNzk4NyAyNjcuNTM5IDUzLjYyODMgMjkwLjE4NSA5Mi4xODMxIDI5MC41NDUgOTIuNzk1IDI5MC42NTYgOTIuOTk2QzI5MC44NzcgOTMuNTEzIDI5MSA5NC4wODE1IDI5MSA5NC42NzgyIDI5MSA5Ny4wNjUxIDI4OS4wMzggOTkgMjg2LjYxNyA5OUwyNDAuMzgzIDk5QzIzNy45NjMgOTkgMjM2IDk3LjA2NTEgMjM2IDk0LjY3ODIgMjM2IDk0LjM3OTkgMjM2LjAzMSA5NC4wODg2IDIzNi4wODkgOTMuODA3MkwyMzYuMzM4IDkzLjAxNjIgMjM2Ljg1OCA5Mi4xMzE0IDI1OS40NzMgNTMuNjI5NCAyNTkuOTYxIDUyLjc5ODUgMjYwLjQwNyA1Mi4yNjU4QzI2MS4yIDUxLjQ4MzcgMjYyLjI5NiA1MSAyNjMuNTA2IDUxWk0yNjMuNTg2IDY2LjAxODNDMjYwLjczNyA2Ni4wMTgzIDI1OS4zMTMgNjcuMTI0NSAyNTkuMzEzIDY5LjMzNyAyNTkuMzEzIDY5LjYxMDIgMjU5LjMzMiA2OS44NjA4IDI1OS4zNzEgNzAuMDg4N0wyNjEuNzk1IDg0LjAxNjEgMjY1LjM4IDg0LjAxNjEgMjY3LjgyMSA2OS43NDc1QzI2Ny44NiA2OS43MzA5IDI2Ny44NzkgNjkuNTg3NyAyNjcuODc5IDY5LjMxNzkgMjY3Ljg3OSA2Ny4xMTgyIDI2Ni40NDggNjYuMDE4MyAyNjMuNTg2IDY2LjAxODNaTTI2My41NzYgODYuMDU0N0MyNjEuMDQ5IDg2LjA1NDcgMjU5Ljc4NiA4Ny4zMDA1IDI1OS43ODYgODkuNzkyMSAyNTkuNzg2IDkyLjI4MzcgMjYxLjA0OSA5My41Mjk1IDI2My41NzYgOTMuNTI5NSAyNjYuMTE2IDkzLjUyOTUgMjY3LjM4NyA5Mi4yODM3IDI2Ny4zODcgODkuNzkyMSAyNjcuMzg3IDg3LjMwMDUgMjY2LjExNiA4Ni4wNTQ3IDI2My41NzYgODYuMDU0N1oiIGZpbGw9IiNGRkU1MDAiIGZpbGwtcnVsZT0iZXZlbm9kZCIvPjwvZz48L3N2Zz4=) no-repeat 1rem/1.8rem, var(--falta);
+    padding: 1rem 1rem 1rem 3.7rem;
+    color: white;
+}
+
+    .blazor-error-boundary::after {
+        content: "An error has occurred."
+    }
+
+.darker-border-checkbox.form-check-input {
+    border-color: #929292;
+}
+
+.form-floating > .form-control-plaintext::placeholder, .form-floating > .form-control::placeholder {
+    color: var(--bs-secondary-color);
+    text-align: end;
+}
+
+.form-floating > .form-control-plaintext:focus::placeholder, .form-floating > .form-control:focus::placeholder {
+    text-align: start;
+}
+
+/* =====================================================================
+   BARRA SUPERIOR
+   ===================================================================== */
+.topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background-color: var(--cancha);
+    color: white;
+    padding: 12px 30px;
+}
+
+.topbar-brand {
+    flex: 0 0 auto;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 1.5em;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    text-align: center;
+    padding: 0 20px;
+}
+
+.topbar-nav {
+    display: flex;
+    gap: 6px;
+}
+
+.topbar-link {
+    color: white;
+    text-decoration: none;
+    padding: 8px 14px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 500;
+}
+
+    .topbar-link:hover {
+        background-color: rgba(255, 255, 255, 0.15);
+    }
+
+.topbar-side {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.topbar-side-right {
+    justify-content: flex-end;
+}
+
+/* Segunda barra, pegada debajo de .topbar, con las páginas de dentro de
+   un torneo. La línea de --cork arriba es el mismo motivo de "línea de
+   cancha" que separa secciones en el resto del sitio. */
+.subbar {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 6px;
+    background-color: var(--cancha-mid);
+    border-top: 2px solid var(--cork);
+    padding: 8px 30px;
+}
+
+    .subbar .topbar-link {
+        color: white;
+    }
+
+.dropdown {
+    position: relative;
+}
+
+.dropdown-menu {
+    display: none;
+    position: absolute;
+    top: 100%;
+    right: 0;
+    background: white;
+    border-radius: 6px;
+    overflow: hidden;
+    min-width: 180px;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+    z-index: 10;
+}
+
+.dropdown:hover .dropdown-menu {
+    display: block;
+}
+
+.dropdown-menu a {
+    display: block;
+    padding: 10px 14px;
+    color: var(--sombra);
+    text-decoration: none;
+    font-family: 'Inter', sans-serif;
+}
+
+    .dropdown-menu a:hover {
+        background: var(--linea);
+    }
+
+#blazor-error-ui {
+    background: lightyellow;
+    bottom: 0;
+    box-shadow: 0 -1px 2px rgba(0, 0, 0, 0.2);
+    display: none;
+    left: 0;
+    padding: 0.6rem 1.25rem 0.7rem 1.25rem;
+    position: fixed;
+    width: 100%;
+    z-index: 1000;
+}
+
+    #blazor-error-ui .reload {
+        color: inherit;
+        margin-left: 1rem;
+        text-decoration: underline;
+    }
+
+    #blazor-error-ui .dismiss {
+        cursor: pointer;
+        position: absolute;
+        right: 0.75rem;
+        top: 0.5rem;
+    }
+
+/* =====================================================================
+   PANEL (TorneoDashboard)
+   ===================================================================== */
+.panel-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 15px;
+    margin-top: 20px;
+}
+
+.panel-card {
+    display: block;
+    width: 200px;
+    border: 2px solid var(--gris-borde);
+    border-radius: 10px;
+    padding: 20px;
+    text-align: center;
+    text-decoration: none;
+    color: var(--sombra);
+    background: white;
+    transition: border-color 0.15s;
+}
+
+    .panel-card:hover {
+        border-color: var(--cork);
+    }
+
+    .panel-card strong {
+        display: block;
+        margin: 8px 0 4px 0;
+        font-size: 1.1em;
+    }
+
+.panel-icon {
+    font-size: 2em;
+}
+
+/* =====================================================================
+   SISTEMA DE COMPONENTES - para ir rediseñando el resto de páginas
+   ===================================================================== */
+
+.pagina {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 24px 20px 60px 20px;
+}
+
+.pagina-subtitulo {
+    color: #5B6B68;
+    font-size: 0.95rem;
+    margin: 0;
+}
+
+.pagina-header {
+    margin-bottom: 24px;
+}
+
+/* Divisor de doble línea, como las líneas de sencillos + dobles de una
+   cancha. Se usa en vez de <hr> para separar secciones grandes. */
+.cancha-divider {
+    border: 0;
+    height: 7px;
+    margin: 28px 0;
+    background: linear-gradient(var(--cancha), var(--cancha)) top / 100% 2px no-repeat, linear-gradient(var(--cancha), var(--cancha)) bottom / 100% 2px no-repeat;
+    opacity: 0.85;
+}
+
+.tarjeta {
+    background: var(--blanco);
+    border: 1px solid var(--gris-borde);
+    border-radius: var(--radio);
+    box-shadow: var(--sombra-caja);
+    padding: 20px 24px;
+    margin-bottom: 20px;
+}
+
+/* Tarjeta con la esquina superior derecha cortada en diagonal, como un
+   panel de marcador. Úsala con moderación (encabezados de sección
+   destacados), no en todas las tarjetas. */
+.tarjeta-marcador {
+    background: var(--cancha);
+    color: var(--linea);
+    border-radius: var(--radio);
+    padding: 18px 24px;
+    margin-bottom: 20px;
+    clip-path: polygon(0 0, calc(100% - 22px) 0, 100% 22px, 100% 100%, 0 100%);
+}
+
+    .tarjeta-marcador h1, .tarjeta-marcador h2, .tarjeta-marcador h3 {
+        color: var(--linea);
+    }
+
+    .tarjeta-marcador .pagina-subtitulo {
+        color: #C9DCD9;
+    }
+
+.btn {
+    font-family: 'Inter', sans-serif;
+    font-weight: 600;
+    font-size: 0.92rem;
+    border: none;
+    border-radius: 6px;
+    padding: 8px 16px;
+    cursor: pointer;
+    transition: filter 0.12s ease, transform 0.05s ease;
+}
+
+    .btn:active {
+        transform: translateY(1px);
+    }
+
+.btn-secondary {
+    background: var(--secundario);
+    color: var(--linea);
+}
+
+    .btn-secondary:hover {
+        filter: brightness(1.08);
+    }
+
+.btn-danger {
+    background: transparent;
+    color: var(--falta);
+    border: 1px solid var(--falta);
+}
+
+    .btn-danger:hover {
+        background: var(--falta);
+        color: var(--linea);
+    }
+
+.btn-ghost {
+    background: transparent;
+    color: var(--cancha);
+    border: 1px solid var(--gris-borde);
+}
+
+    .btn-ghost:hover {
+        border-color: var(--cancha);
+    }
+
+.tarjeta-marcador .btn-ghost {
+    color: var(--linea);
+    border-color: rgba(255, 255, 255, 0.4); 
+}
+
+    .tarjeta-marcador .btn-ghost:hover {
+        border-color: var(--linea);
+        background: rgba(255, 255, 255, 0.1);
+    }
+
+.btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.campo {
+    margin-bottom: 14px;
+}
+
+    .campo label {
+        display: block;
+        font-weight: 600;
+        font-size: 0.85rem;
+        color: var(--sombra);
+        margin-bottom: 4px;
+    }
+
+    .campo input, .campo select {
+        font-family: 'Inter', sans-serif;
+        font-size: 0.95rem;
+        border: 1px solid var(--gris-borde);
+        border-radius: 6px;
+        padding: 8px 10px;
+        background: var(--blanco);
+        color: var(--sombra);
+        width: 100%;
+        box-sizing: border-box;
+    }
+
+        .campo input:focus, .campo select:focus {
+            outline: 2px solid var(--secundario);
+            outline-offset: 1px;
+            border-color: var(--secundario);
+        }
+
+.tabla-limpia {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.92rem;
+}
+
+    .tabla-limpia th {
+        text-align: left;
+        font-family: 'Barlow Condensed', sans-serif;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+        text-transform: uppercase;
+        font-size: 0.78rem;
+        color: #5B6B68;
+        border-bottom: 2px solid var(--cancha);
+        padding: 8px 10px;
+    }
+
+    .tabla-limpia td {
+        padding: 10px 10px;
+        border-bottom: 1px solid var(--gris-borde);
+        font-variant-numeric: tabular-nums;
+    }
+
+    .tabla-limpia tbody tr:hover {
+        background: #F1EEE5;
+    }
+
+.badge {
+    display: inline-block;
+    font-family: 'Inter', sans-serif;
+    font-weight: 600;
+    font-size: 0.75rem;
+    padding: 3px 10px;
+    border-radius: 100px;
+    letter-spacing: 0.02em;
+}
+
+.badge-planeado {
+    background: #E4EEF2;
+    color: var(--secundario);
+}
+
+.badge-pendiente {
+    background: #FBEBD2;
+    color: var(--cork-dark);
+}
+
+.badge-jugado {
+    background: #DCEAE6;
+    color: var(--cancha);
+}
+
+.badge-baja {
+    background: #F5DAD7;
+    color: var(--falta);
+}
+
+.mensaje-error {
+    color: var(--falta);
+    font-weight: 500;
+    margin-top: 10px;
+}
+
+.mensaje-exito {
+    color: var(--cancha);
+    font-weight: 500;
+    margin-top: 10px;
+}
+
+.mensaje-flotante {
+    position: fixed;
+    top: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 500;
+    padding: 12px 20px;
+    border-radius: 8px;
+    box-shadow: 0 4px 14px rgba(28,43,41,0.25);
+    max-width: 90vw;
+    text-align: center;
+    margin-top: 0;
+    animation: mensaje-entrada 0.2s ease-out;
+}
+
+.mensaje-flotante.mensaje-exito {
+    background : #E3F1DE;
+    border: 1px solid var(--cancha);
+}
+
+.mensaje-flotante.mensaje-error {
+    background: #F5DAD7;
+    border: 1px solid var(--falta);
+}
+
+@keyframes mensaje-entrada {
+    from { opacity: 0; transform: translateX(-50%) translateY(-10px); }
+    to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+.vacio {
+    color: #5B6B68;
+    font-style: italic;
+}
+
+/* =====================================================================
+   DASHBOARD DE TORNEO
+   ===================================================================== */
+
+.stat-grid {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-bottom: 24px;
+}
+
+.stat-card {
+    background: var(--blanco);
+    border: 1px solid var(--gris-borde);
+    border-radius: var(--radio);
+    padding: 16px 20px;
+    flex: 1;
+    min-width: 160px;
+    box-shadow: var(--sombra-caja);
+}
+
+    .stat-card .stat-numero {
+        font-family: 'Barlow Condensed', sans-serif;
+        font-size: 2.2rem;
+        font-weight: 800;
+        color: var(--cancha);
+        line-height: 1;
+    }
+
+    .stat-card .stat-label {
+        font-size: 0.78rem;
+        color: #5B6B68;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+        margin-top: 4px;
+    }
+
+.progreso {
+    background: var(--gris-borde);
+    border-radius: 100px;
+    height: 7px;
+    overflow: hidden;
+    margin-top: 8px;
+}
+
+.progreso-fill {
+    background: var(--cork);
+    height: 100%;
+    border-radius: 100px;
+}
+
+.progreso-texto {
+    font-size: 0.78rem;
+    color: #5B6B68;
+    margin-top: 4px;
+}
+
+.cat-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
+    gap: 16px;
+}
+
+.cat-card {
+    background: var(--blanco);
+    border: 1px solid var(--gris-borde);
+    border-radius: var(--radio);
+    padding: 16px 18px;
+    box-shadow: var(--sombra-caja);
+}
+
+.cat-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 8px;
+}
+
+.cat-card h3 {
+    margin-bottom: 2px;
+}
+
+.cat-meta {
+    font-size: 0.85rem;
+    color: #5B6B68;
+    margin-bottom: 10px;
+}
+
+.badge-formato-grupos {
+    background: #E4EEF2;
+    color: var(--secundario);
+}
+
+.badge-formato-eliminatoria {
+    background: #FBEBD2;
+    color: var(--cork-dark);
+}
+
+.badge-formato-jornadas {
+    background: #DCEAE6;
+    color: var(--cancha);
+}
+
+.cat-card details {
+    margin-top: 10px;
+    font-size: 0.85rem;
+}
+
+.cat-card summary {
+    cursor: pointer;
+    color: var(--secundario);
+    font-weight: 600;
+}
+
+.cat-card ul {
+    margin: 8px 0 0 0;
+    padding-left: 18px;
+}
+
+.cat-card li {
+    margin-bottom: 4px;
+}
+
+/* =====================================================================
+   FORMULARIOS EN FILA (varios campos lado a lado, ej. Agregar Categoría)
+   ===================================================================== */
+.campos-fila {
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+    align-items: flex-end;
+}
+
+    .campos-fila .campo {
+        margin-bottom: 0;
+    }
+
+.tabla-limpia td.col-accion {
+    text-align: right;
+    white-space: nowrap;
+}
+
+/* =====================================================================
+   REGISTRO: sub-tarjetas (integrante 1 / integrante 2), chips de grupo
+   ===================================================================== */
+.subtarjeta {
+    border: 1px solid var(--gris-borde);
+    border-radius: 8px;
+    padding: 14px 16px;
+    margin-bottom: 12px;
+    background: #FBFAF6;
+    overflow-x: auto;
+}
+
+    .subtarjeta strong {
+        font-family: 'Barlow Condensed', sans-serif;
+        font-size: 1.05rem;
+        color: var(--cancha);
+    }
+
+.radio-grupo {
+    display: flex;
+    gap: 18px;
+    margin: 10px 0 14px 0;
+}
+
+    .radio-grupo label {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-weight: 500;
+        cursor: pointer;
+    }
+
+.nota {
+    color: #5B6B68;
+    font-size: 0.85rem;
+}
+
+.chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    margin: 0 8px 8px 0;
+}
+
+.btn-chip-x {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 1rem;
+    line-height: 1;
+    color: inherit;
+    padding: 0;
+}
+
+/* =====================================================================
+   CALENDARIO: cola de partidos, captura de resultados
+   ===================================================================== */
+
+.partido-card {
+    background: var(--blanco);
+    border: 1px solid var(--gris-borde);
+    border-left: 4px solid var(--gris-borde);
+    border-radius: var(--radio);
+    padding: 14px 18px;
+    margin-bottom: 12px;
+    box-shadow: var(--sombra-caja);
+}
+
+.partido-card.en-cancha {
+    border-left-color: var(--cancha);
+    background: #F2F8F6;
+}
+
+.partido-card-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.partido-meta {
+    color: #5B6B68;
+    font-size: 0.85rem;
+    margin: 4px 0;
+}
+
+.partido-nombres {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: var(--sombra);
+}
+
+.partido-acciones {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.captura-sets {
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid var(--gris-borde);
+}
+
+.captura-set label {
+    display: block;
+    font-weight: 600;
+    font-size: 0.8rem;
+    color: #5B6B68;
+    margin-bottom: 4px;
+}
+
+.badge-en-cancha {
+    background: #DCEAE6;
+    color: var(--cancha);
+}
+
+.badge-en-espera {
+    background: #EFEDE4;
+    color: #5B6B68;
+}
+
+.categoria-generar-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--gris-borde);
+}
+
+    .categoria-gererar-row:last-child {
+        border-bottom: none;
+    }
+
+.categoria-generar-nombre {
+    flex: 1;
+    min-width: 200px;
+}
+
+.input-mini {
+    font-family: 'Inter', sans-serif;
+    font-size: 0.9rem;
+    border: 1px solid var(--gris-borde);
+    border-radius: 6px;
+    padding: 6px 8px;
+    width: 70px;
+}
+
+/* =====================================================================
+   FASE FINAL: bracket, byes, ganador
+   ===================================================================== */
+
+.partido-card.jugado {
+    background: #F7F6F2;
+}
+
+.partido-card-bye {
+    border: 1px dashed var(--gris-borde);
+    border-radius: var(--radio);
+    padding: 14px 18px;
+    margin-bottom: 12px;
+    color: #5B6B68;
+}
+
+.partido-ganador {
+    color: var(--cancha);
+    font-weight: 600;
+    margin-left: 8px;
+}
+
+/* =====================================================================
+   AVISOS (advertencia, ej. empates pendientes en Posiciones)
+   ===================================================================== */
+
+.mensaje-aviso {
+    color: var(--cork-dark);
+    font-weight: 500;
+    margin: 10px 0;
+}
+
+/* =====================================================================
+   REPORTE FINAL: podio por categoría
+   ===================================================================== */
+
+.resultado-fila {
+    display: flex;
+    gap: 14px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--gris-borde);
+}
+
+    .resultado-fila:last-child {
+        border-bottom: none;
+    }
+
+.resultado-puesto {
+    min-width: 150px;
+    flex-shrink: 0;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    font-size: 0.85rem;
+}
+
+.resultado-puesto.campeon {
+    color: var(--cork-dark);
+}
+
+.resultado-puesto.subcampeon {
+    color: var(--secundario);
+}
+
+.resultado-puesto.otro {
+    color: #5B6B68;
+}
+
+.resultado-nombres {
+    color: var(--sombra); 
+}
+
+/* =====================================================================
+   RANKING: badges de posición en el historial
+   ===================================================================== */
+
+.badge-campeon {
+    background: #FBEBD2;
+    color: var(--cork-dark); 
+}
+
+.badge-subcampeon {
+    background: #E4EEF2;
+    color: var(--secundario); 
+}
+
+.badge-otro-puesto {
+    background: #EFEDE4;
+    color: #5B6B68;
+}
+
+/* =====================================================================
+   REGISTRO: roster global por categoría/grupo, mover de grupo
+   ===================================================================== */
+
+.grupos-horizontal {
+    display: flex;
+    gap: 14px;
+    overflow-x: auto;
+    padding-bottom: 6px;
+}
+
+.grupo-columna {
+    flex: 0 0 auto;
+    min-width: 220px;
+    max-width: 240px;
+    background: #FBFAF6;
+    border: 1px solid var(--gris-borde);
+    border-radius: 8px;
+    padding: 12px 14px;
+}
+
+    .grupo-columna h4 {
+        font-family: 'Barlow Condensed' sans-serif;
+        font-size: 1rem;
+        color: var(--cancha);
+        margin: 0 0 8px 0;
+    }
+
+.grupo-columna-atleta {
+    padding: 8px 0;
+    border-bottom: 1px solid var(--gris-borde);
+    font-size: 0.9rem;
+}
+
+    .grupo-columna-atleta:last-child {
+        border-bottom: none;
+    }
+
+.btn-mini {
+    padding: 3px 8px;
+    font-size: 0.75rem;
+}
+
+/* =====================================================================
+   FASE FINAL: bracket visual (árbol de eliminación)
+   ===================================================================== */
+
+.bracket-controles {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+}
+
+.bracket-wrapper {
+    overflow-x: auto;
+    padding: 8px 10px 20px;
+}
+
+.bracket-grid {
+    display: grid;
+    grid-template-rows: auto repeat(var(--filas), minmax(78px, 1fr));
+    align-items: stretch;
+    min-width: max-content;
+}
+
+.bracket-titulo-ronda {
+    grid-row: 1;
+    text-align: center;
+    font-family: 'Barlow Condensed', sans-serif;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--cancha);
+    font-weight: 700;
+    padding-bottom: 14px;
+    cursor: pointer;
+    user-select: none;
+}
+
+    .bracket-titulo-ronda:hover {
+        text-decoration: underline;
+    }
+
+.bracket-grid .atenuada {
+    opacity: 0.3;
+}
+
+.bracket-grid .enfocada {
+    transform: scale(1.2);
+    transform-origin: center;
+    z-index: 2;
+    position: relative;
+}
+
+.bracket-slot {
+    align-self: center;
+    min-width: 230px;
+    transition: transform 0.35s ease, opacity 0.35s ease;
+}
+
+.bracket-match {
+    background: var(--blanco);
+    border: 1px solid var(--gris-borde);
+    border-radius: 8px;
+    padding: 8px 10px;
+    margin: 6px 2px;
+    font-size: 0.85rem;
+    box-shadow: var(--sombra-caja);
+}
+
+    .bracket-match.jugado {
+        border-color: var(--cancha);
+    }
+
+.bracket-competidor {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    padding: 3px 0;
+}
+
+    .bracket-competidor.ganador {
+        font-weight: 700;
+        color: var(--cancha);
+    }
+
+    .bracket-competidor.perdedor {
+        color: #98A3A0;
+        text-decoration: line-through;
+        text-decoration-color: #C8C2B4;
+    }
+
+.bracket-nombre {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.bracket-seed {
+    display: inline-block;
+    min-width: 18px;
+    text-align: center;
+    font-size: 0.68rem;
+    font-weight: 700;
+    color: var(--cork-dark);
+    background: #FBEBD2;
+    border-radius: 4px;
+    padding: 0 4px;
+    margin-right: 6px;
+    flex-shrink: 0;
+}
+
+.bracket-marcador {
+    font-weight: 700;
+    font-size: 0.8rem;
+    color: var(--sombra);
+    flex-shrink: 0;
+    margin-left: 8px;
+    white-space: nowrap;
+}
+
+.bracket-acciones-match {
+    display: flex;
+    gap: 6px;
+    margin-top: 6px;
+}
+
+.bracket-bye {
+    border: 1px dashed var(--gris-borde);
+    border-radius: 8px;
+    padding: 8px 10px;
+    margin: 6px 2px;
+    font-size: 0.8rem;
+    color: #5B6B68;
+}
+
+.bracket-conector-par {
+    position: relative;
+}
+
+    .bracket-conector-par::before {
+        content: "";
+        position: absolute;
+        top: 25%;
+        bottom: 25%;
+        left: 50%;
+        width: 2px;
+        background: var(--gris-borde);
+    }
+
+    .bracket-conector-par .conector-arriba,
+    .bracket-conector-par .conector-abajo {
+        position: absolute;
+        left: 0;
+        width: 50%;
+        height: 2px;
+        background: var(--gris-borde);
+    }
+
+    .bracket-conector-par .conector-arriba {
+        top: 25%;
+    }
+
+    .bracket-conector-par .conector-abajo {
+        top: 75%;
+    }
+
+    .bracket-conector-par .conector-salida {
+        position: absolute;
+        left: 50%;
+        right: 0;
+        top: 50%;
+        height: 2px;
+        background: var(--gris-borde);
+    }
+
+/* =====================================================================
+   CANCHAS: representación visual de la cancha con info del partido
+   ===================================================================== */
+.canchas-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 18px;
+}
+
+.cancha-card {
+    background: var(--blanco);
+    border: 1px solid var(--gris-borde);
+    border-radius: var(--radio);
+    padding: 14px;
+    box-shadow: var(--sombra-caja);
+}
+
+.cancha-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.cancha-numero {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-weight: 700;
+    font-size: 1.1rem;
+    color: var(--sombra);
+}
+
+.cancha-visual {
+    position: relative;
+    width: 100%;
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+    .cancha-visual svg {
+        display: block;
+        width: 100%;
+        height: auto;
+    }
+
+.cancha-card-footer {
+    margin-top: 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+}
+
+.cancha-bloqueada {
+    font-size: 0.78rem;
+    color: #98A3A0;
+    font-style: italic;
+}
+
+.bracket-marcador {
+    font-weight: 700;
+    font-size: 0.8rem;
+    color: var(--sombra);
+    flex-shrink: 0;
+    margin-left: 8px;
+    white-space: nowrap;
+}
+
+.cancha-nombres-fila {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.cancha-nombre-lado {
+    flex: 1;
+    text-align: center;
+    padding: 4px 6px;
+}
+
+    .cancha-nombre-lado strong {
+        display: block;
+        font-size: 0.85rem;
+        color: var(--sombra);
+        line-height: 1.2;
+    }
+
+    .cancha-nombre-lado span {
+        font-size: 0.72rem;
+        color: #5B6B68;
+    }
+
+    .cola-partidos {
+        max-width: 640px;
+        margin: 0 auto;
+    }
+
+/* =====================================================================
+   POSICIONES: cuadrícula de tarjetas por grupo
+   ===================================================================== */
+.posiciones-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+    gap: 18px;
+    align-items: start;
+}
+
+/* =====================================================================
+   RESPONSIVE: navegación en pantallas chicas (celular)
+   ===================================================================== */
+@media (max-width: 700px) {
+    html, body {
+        overflow-x: hidden;
+    }
+
+    .pagina {
+        padding: 16px 12px 40px 12px;
+    }
+
+    .tarjeta {
+        padding: 16px;
+        overflow-x: auto;
+    }
+
+    .topbar {
+        padding: 10px 12px;
+        gap: 6px;
+    }
+
+    .topbar-brand {
+        font-size: 1.05em;
+        padding: 0 6px;
+        white-space: nowrap;
+    }
+
+    .topbar-side {
+        flex: 0 1 auto;
+        min-width: 0;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+    }
+
+        .topbar-side::-webkit-scrollbar {
+            display: none;
+        }
+
+    .topbar-link {
+        white-space: nowrap;
+        padding: 8px 10px;
+    }
+
+    .subbar {
+        justify-content: flex-start;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        padding: 8px 12px;
+        scrollbar-width: none;
+    }
+
+        .subbar::-webkit-scrollbar {
+            display: none;
+        }
+
+        .subbar .topbar-link {
+            white-space: nowrap;
+            flex: 0 0 auto;
+        }
+
+    .cola-partidos,
+    .posiciones-grid,
+    .bracket-wrapper {
+        overflow-x: auto;
+    }
+}
+
+/* =====================================================================
+   IMPRESIÓN DEL BRACKET
+   ===================================================================== */
+@media print {
+    .topbar,
+    .subbar,
+    .bracket-controles,
+    .bracket-acciones-match,
+    .pagina-header,
+    .no-imprimir,
+    button {
+        display: none !important;
+    }
+
+    .bracket-wrapper {
+        overflow-x: visible;
+    }
+
+    .bracket-wrapper:not(.imprimir-solo) {
+        display: none !important;
+    }
+
+    .bracket-grid {
+        transition: none !important;
+    }
+
+    .tarjeta {
+        box-shadow: none;
+        border: none;
+    }
+
+    @page {
+        size: landscape;
+        margin: 0.4in;
+    }
+}
+
+.servicio-actual {
+    background: #FFF3CD;
+    border: 1px solid #E6C260;  
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 1.1em;
+    font-weight: 600;
+    text-align: center;
+    margin: 10px 0;
+}
+
+/* =====================================================================
+   GRILLA VISUAL DE PUNTOS (captura punto por punto)
+   ===================================================================== */
+
+.grilla-puntos {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--gris-borde);
+    border-radius: var(--radio);
+    overflow-y: auto;
+    max-height: 260px;
+    margin: 10px 0;
+}
+
+.grilla-puntos-header {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    background: var(--cancha);
+    color: var(--blanco);
+    font-weight: 600;
+    font-size: 0.85em;
+    position: sticky;
+    top: 0;
+}
+
+.grilla-puntos-header span {
+    padding: 6px 10px;
+    text-align: center;
+}
+
+grilla-puntos-fila {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    border-top: 1px solid var(--gris-borde);
+}
+
+.grilla-punto-celda {
+    padding: 5px 10px;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+    color: #5B6B68;
+}
+
+.grilla-punto-celda.anoto {
+    background: #FDF1DC;
+    color: var(--cork-dark);
+    font-weight: 700;
+}

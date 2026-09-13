@@ -1,0 +1,203 @@
+﻿@page "/respaldo"
+@attribute [Authorize(Roles = "Admin")]
+@using Microsoft.AspNetCore.Authorization
+@using ProyectoArbitraje.Data
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.Data.SqlClient
+@inject IDbContextFactory<TorneoContext> DbFactory
+@inject IConfiguration Config
+@inject IJSRuntime JS
+
+<PageTitle>Respaldo</PageTitle>
+
+<div class="pagina">
+    <div class="tarjeta-marcador pagina-header">
+        <h1>Respaldo de Base de Datos</h1>
+        <p class="pagina-subtitulo">Guarda una copia completa de toda la base de datos (todos los torneos) en el servidor de SQL.</p>
+    </div>
+
+    <div class="tarjeta">
+        <h2>Hacer respaldo</h2>
+        <p class="nota">Carpeta configurada: <code>@carpetaDestino</code> (editable en appsettings.json, sección Respaldos:CarpetaDestino)</p>
+
+        <div style="margin-top:16px;">
+            <button class="btn btn-primary" @onclick="HacerRespaldo">Respaldar Ahora</button>
+        </div>
+
+        @if (!string.IsNullOrEmpty(mensaje))
+        {
+            <p class="@(esExito ? "mensaje-exito" : "mensaje-error")">@mensaje</p>
+        }
+    </div>
+
+    <div class="tarjeta">
+        <h2>Restaurar Respaldo</h2>
+        <p class="mensaje-error" style="font-weight:600;">
+            Esto reemplaza TODOS los datos actuales (de todos los torneos) por los del resplado elegido. No se puede deshacer, y desconecta a todos los que esten usando la app en este momento. Después de restaurar, cierra y vuelve a abrir la aplicación, y pide a todos que vuelvan a entrar.
+        </p>
+
+        @if (!archivosRespaldo.Any())
+        {
+            <p class="vacio">No se encontraron archivos .bak en @carpetaDestino.</p>
+        }
+        else
+        {
+            <div class="campo" style="max-width:420px;">
+                <label>Archivo a restaurar</label>
+                <select @bind="archivoSeleccionado">
+                    <option value="">-- Selecciona un respaldo --</option>
+                    @foreach (var archivo in archivosRespaldo)
+                    {
+                        <option value="@archivo">@archivo</option>
+                    }
+                </select>
+            </div>
+
+            <div class="campo" style="max-width:420px;">
+                <label>Escribe RESTAURAR para confirmar</label>
+                <input type="text" @bind="textoConfirmacion" placeholder="RESTAURAR" />
+            </div>
+
+            <button class="btn btn-primary" @onclick="RestaurarRespaldo">Restaurar</button>
+        }
+
+        @if (!string.IsNullOrEmpty(mensajeRestaurar))
+        {
+            <p class="@(esExitoRestaurar ? "mensaje-exito" : "mensaje-error")">@mensajeRestaurar</p>
+        }
+    </div>
+</div>
+
+@code {
+    private string mensaje = "";
+    private bool esExito = false;
+    private string carpetaDestino = "";
+
+    private List<string> archivosRespaldo = new();
+    private string? archivoSeleccionado;
+    private string textoConfirmacion = "";
+    private string mensajeRestaurar = "";
+    private bool esExitoRestaurar = false;
+
+    protected override void OnInitialized()
+    {
+        carpetaDestino = Config["Respaldos:CarpetaDestino"] ?? "C:\\RespaldosTorneo\\";
+        CargarArchivos();
+    }
+
+    private void CargarArchivos()
+    {
+        archivosRespaldo = new List<string>();
+        try
+        {
+            if (Directory.Exists(carpetaDestino))
+            {
+                archivosRespaldo = Directory.GetFiles(carpetaDestino, "*.bak")
+                    .Select(Path.GetFileName)
+                    .Where(n => n != null)
+                    .Select(n => n!)
+                    .OrderByDescending(n => n)
+                    .ToList();
+            }
+        }
+        catch { }
+    }
+
+    private async Task HacerRespaldo()
+    {
+        mensaje = "";
+        try
+        {
+            using var db = await DbFactory.CreateDbContextAsync();
+            string nombreArchivo = $"TorneoBadminton_{DateTime.Now:yyyyMMdd_HHmmss}.bak";
+            string rutaCompleta = Path.Combine(carpetaDestino, nombreArchivo);
+            string sql = $"BACKUP DATABASE TorneoBadminton TO DISK = N'{rutaCompleta}'";
+
+            await db.Database.ExecuteSqlRawAsync(sql);
+            mensaje = $"Respaldo creado: {nombreArchivo} (en {carpetaDestino})";
+            esExito = true;
+            CargarArchivos();
+        }
+        catch (Exception ex)
+        {
+            mensaje = $"Error: {ex.Message}. Verifica que exista la carpeta {carpetaDestino}";
+            esExito = false;
+        }
+    }
+
+    private async Task RestaurarRespaldo()
+    {
+        mensajeRestaurar = "";
+
+        if (string.IsNullOrEmpty(archivoSeleccionado))
+        {
+            mensajeRestaurar = "Selecciona un archivo de respaldo.";
+            esExitoRestaurar = false;
+            return;
+        }
+
+        CargarArchivos();
+        if (!archivosRespaldo.Contains(archivoSeleccionado))
+        {
+            mensajeRestaurar = "Ese archivo ya no es válido. Vuelve a seleccionarlo de la lista.";
+            esExitoRestaurar = false;
+            archivoSeleccionado = null;
+            return;
+        }
+
+        if (textoConfirmacion != "RESTAURAR")
+        {
+            mensajeRestaurar = "Escribe RESTAURAR (en mayúsculas) para confirmar.";
+            esExitoRestaurar = false;
+            return;
+        }
+
+        bool confirmado = await JS.InvokeAsync<bool>("confirm",
+            $"¿Restaurar '{archivoSeleccionado}'? Esto reemplaza TODOS los datos actuales con lo que había en ese respaldo. No se puede deshacer.");
+        if (!confirmado) return;
+
+        try
+        {
+            string nombreSeguro = Path.GetFileName(archivoSeleccionado);
+            string rutaCompleta = Path.Combine(carpetaDestino, archivoSeleccionado);
+
+            var builder = new SqlConnectionStringBuilder(Config.GetConnectionString("TorneoBadminton"));
+            builder.InitialCatalog = "master";
+
+            using var conn = new SqlConnection(builder.ConnectionString);
+            await conn.OpenAsync();
+
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandTimeout = 120;
+                cmd.CommandText = "ALTER DATABASE TorneoBadminton SET SINGLE_USER WITH ROLLBACK IMMEDIATE;";
+                await cmd.ExecuteNonQueryAsync();
+            }
+
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandTimeout = 300;
+                cmd.CommandText = $"RESTORE DATABASE TorneoBadminton FROM DISK = N'{rutaCompleta}' WITH REPLACE;";
+                await cmd.ExecuteNonQueryAsync();
+            }
+
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandTimeout = 60;
+                cmd.CommandText = "ALTER DATABASE TorneoBadminton SET MULTI_USER;";
+                await cmd.ExecuteNonQueryAsync();
+            }
+
+            SqlConnection.ClearAllPools();
+
+            mensajeRestaurar = "Restaurado con éxito. IMPORTANTE: cierra la aplicación por completo y vuelve a abrirla, y pide a todos los usuarios que vuelvan a entrar desde cero.";
+            esExitoRestaurar = true;
+            textoConfirmacion = "";
+        }
+        catch (Exception ex)
+        {
+            mensajeRestaurar = $"Error al restaurar: {ex.Message}";
+            esExitoRestaurar = false;
+        }
+    }
+}

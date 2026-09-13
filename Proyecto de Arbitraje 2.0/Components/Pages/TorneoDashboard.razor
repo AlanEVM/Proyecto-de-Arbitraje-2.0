@@ -1,0 +1,285 @@
+﻿@page "/torneo-dashboard"
+@attribute [Authorize(Roles = "Admin")]
+@using Microsoft.AspNetCore.Authorization
+@using ProyectoArbitraje.Data
+@using ProyectoArbitraje.Models
+@using ProyectoArbitraje.Services
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<TorneoContext> DbFactory
+@inject TorneoActualService TorneoActual
+
+<PageTitle>Panel del Torneo</PageTitle>
+
+@if (TorneoActual.TorneoId == null)
+{
+    <div class="pagina">
+        <p class="vacio">No hay un torneo activo. <a href="">Ve a Inicio</a> y entra a uno primero.</p>
+    </div>
+    return;
+}
+
+<div class="pagina">
+    <div class="tarjeta-marcador pagina-header">
+        <h1>@torneo?.Nombre</h1>
+        <p class="pagina-subtitulo">
+            @torneo?.Fecha.ToString("dd/MM/yyyy")
+            &nbsp;·&nbsp;
+            <span class="badge @ClaseBadgeEstado(estadoTorneo)">@estadoTorneo</span>
+        </p>
+    </div>
+
+    <div class="stat-grid">
+        <div class="stat-card">
+            <div class="stat-numero">@totalAtletas</div>
+            <div class="stat-label">Atletas registrados</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-numero">@(resumenCategorias?.Count ?? 0)</div>
+            <div class="stat-label">Categorías</div>
+        </div>
+        <div class="stat-card" style="flex-basis:220px;">
+            <div class="stat-numero">@partidosJugadosTotal<span style="font-size:1.2rem; color:#5B6B68;"> / @partidosTotal</span></div>
+            <div class="stat-label">Partidos jugados</div>
+            <div class="progreso">
+                <div class="progreso-fill" style="width:@PorcentajeAncho(partidosJugadosTotal, partidosTotal)"></div>
+            </div>
+        </div>
+    </div>
+
+    <hr class="cancha-divider" />
+
+    <h2>Categorías</h2>
+
+    @if (resumenCategorias == null || !resumenCategorias.Any())
+    {
+        <p class="vacio">Este torneo todavía no tiene categorías.</p>
+    }
+    else
+    {
+        <div class="cat-grid">
+            @foreach (var c in resumenCategorias)
+            {
+                <div class="cat-card">
+                    <div class="cat-card-header">
+                        <div>
+                            <h3>@c.Categoria.Nombre</h3>
+                            <div class="cat-meta">@c.Categoria.Modalidad · @c.Categoria.Rama</div>
+                        </div>
+                        <span class="badge @ClaseBadgeFormato(c.Categoria.Formato)">@NombreFormato(c.Categoria.Formato)</span>
+                    </div>
+
+                    <div class="cat-meta">
+                        @c.NumAtletas atletas
+                        @if (c.Categoria.Formato == "GruposFaseFinal")
+                        {
+                            <span> · @c.NumGrupos grupos</span>
+                        }
+                    </div>
+
+                    <div class="progreso-texto">@c.PartidosJugados / @c.PartidosTotal partidos jugados</div>
+                    <div class="progreso">
+                        <div class="progreso-fill" style="width:@PorcentajeAncho(c.PartidosJugados, c.PartidosTotal)"></div>
+                    </div>
+
+                    @if (c.Categoria.Formato == "Jornadas" && c.UltimosPartidos.Any())
+                    {
+                        <details>
+                            <summary>Últimos resultados</summary>
+                            <ul>
+                                @foreach (var p in c.UltimosPartidos)
+                                {
+                                    <li>@p.Fecha — @p.NombreA vs @p.NombreB. Ganó: @p.NombreGanador</li>
+                                }
+                            </ul>
+                        </details>
+                    }
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private Torneo? torneo;
+    private string estadoTorneo = "";
+    private int totalAtletas;
+    private int partidosTotal;
+    private int partidosJugadosTotal;
+    private List<CategoriaResumen>? resumenCategorias;
+
+    private class CategoriaResumen
+    {
+        public Categoria Categoria { get; set; } = null!;
+        public int NumAtletas { get; set; }
+        public int NumGrupos { get; set; }
+        public int PartidosTotal { get; set; }
+        public int PartidosJugados { get; set; }
+        public List<PartidoResumen> UltimosPartidos { get; set; } = new();
+    }
+
+    private class PartidoResumen
+    {
+        public string Fecha { get; set; } = "";
+        public string NombreA { get; set; } = "";
+        public string NombreB { get; set; } = "";
+        public string NombreGanador { get; set; } = "";
+    }
+
+    private static string PorcentajeAncho(int jugados, int total)
+    {
+        if (total == 0) return "0%";
+        int pct = (int)Math.Round(100.0 * jugados / total);
+        return $"{pct}%";
+    }
+
+    private static string ClaseBadgeEstado(string estado) => estado switch
+    {
+        "Jugado" => "badge-jugado",
+        "Pendiente" => "badge-pendiente",
+        _ => "badge-planeado"
+    };
+
+    private static string NombreFormato(string formato) => formato switch
+    {
+        "GruposFaseFinal" => "Grupos + Fase Final",
+        "Eliminatoria" => "Eliminatoria directa",
+        "Jornadas" => "Jornadas",
+        _ => formato
+    };
+
+    private static int CalcularPartidosProyectados(Categoria categoria, List<int> conteosPorGrupo, int totalActivos, int? numeroVueltasConfigurado, int partidosRondaInicialReales, int partidosFaseFinalReales)
+    {
+        switch (categoria.Formato)
+        {
+            case "GruposFaseFinal":
+                {
+                    int partidosGrupos = partidosRondaInicialReales > 0
+                        ? partidosRondaInicialReales
+                        : conteosPorGrupo.Sum(n => n * (n - 1) / 2);
+
+                    int clasificadosPorGrupo = categoria.ClasificadosPorGrupo ?? 2;
+                    int clasificados = conteosPorGrupo.Sum(n => Math.Min(n, clasificadosPorGrupo));
+                    int partidosFaseFinal = partidosFaseFinalReales > 0
+                        ? partidosFaseFinalReales
+                        : (clasificados >= 2 ? clasificados - 1 : 0);
+
+                    return partidosGrupos + partidosFaseFinal;
+                }
+            case "Eliminatoria":
+                return partidosFaseFinalReales > 0
+                    ? partidosFaseFinalReales
+                    : (totalActivos >= 2 ? totalActivos - 1 : 0);
+            case "Jornadas":
+                {
+                    int vueltas = numeroVueltasConfigurado ?? 1;
+                    int partidosLiga = totalActivos >= 2 ? vueltas * totalActivos * (totalActivos - 1) / 2 : 0;
+
+                    if (totalActivos >= 2 && totalActivos % 2 == 1)
+                    {
+                        int totalRondas = vueltas * totalActivos;
+                        int totalJornadas = (int)Math.Ceiling(totalRondas / 2.0);
+                        partidosLiga += totalJornadas;
+                    }
+
+                    if (partidosRondaInicialReales > 0)
+                        partidosLiga = partidosRondaInicialReales;
+
+                    int numBandas = totalActivos / 4;
+                    int partidosBandas = partidosFaseFinalReales > 0 ? partidosFaseFinalReales : numBandas * 3;
+
+                    return partidosLiga + partidosBandas;
+                }
+            default:
+                return 0;
+        }
+    }
+
+    private static string ClaseBadgeFormato(string formato) => formato switch
+    {
+        "GruposFaseFinal" => "badge-formato-grupos",
+        "Eliminatoria" => "badge-formato-eliminatoria",
+        "Jornadas" => "badge-formato-jornadas",
+        _ => "badge-planeado"
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (TorneoActual.TorneoId == null) return;
+        using var db = await DbFactory.CreateDbContextAsync();
+        var torneoId = TorneoActual.TorneoId.Value;
+
+        torneo = await db.Torneos.FindAsync(torneoId);
+
+        var categorias = await db.Categorias.Where(c => c.TorneoId == torneoId).ToListAsync();
+        var categoriaIds = categorias.Select(c => c.Id).ToList();
+
+        partidosTotal = await db.Partidos.CountAsync(p => categoriaIds.Contains(p.CategoriaId));
+        partidosJugadosTotal = await db.Partidos.CountAsync(p => categoriaIds.Contains(p.CategoriaId) && p.Estado == "Jugado");
+
+        estadoTorneo = partidosTotal == 0 ? "Planeado" : (partidosJugadosTotal == partidosTotal ? "Jugado" : "Pendiente");
+
+        totalAtletas = await db.CompetidorIntegrantes
+            .Where(ci => categoriaIds.Contains(ci.Competidor.CategoriaId))
+            .Select(ci => ci.AtletaId)
+            .Distinct()
+            .CountAsync();
+
+        resumenCategorias = new List<CategoriaResumen>();
+
+        foreach (var cat in categorias)
+        {
+            var r = new CategoriaResumen { Categoria = cat };
+
+            r.NumAtletas = await db.Competidores.CountAsync(c => c.CategoriaId == cat.Id);
+            r.NumGrupos = await db.Grupos.CountAsync(g => g.CategoriaId == cat.Id);
+
+            int totalActivos = await db.Competidores.CountAsync(c => c.CategoriaId == cat.Id && c.Activo);
+
+            var conteosPorGrupo = new List<int>();
+            if (cat.Formato == "GruposFaseFinal")
+            {
+                var gruposCat = await db.Grupos.Where(g => g.CategoriaId == cat.Id).Select(g => g.Id).ToListAsync();
+                foreach (var grupoId in gruposCat)
+                {
+                    int n = await db.Competidores.CountAsync(c => c.GrupoId == grupoId && c.Activo);
+                    conteosPorGrupo.Add(n);
+                }
+            }
+
+            int? numVueltasCfg = cat.Formato == "Jornadas"
+                ? (await db.Configuracions.FirstOrDefaultAsync(c => c.CategoriaId == cat.Id))?.NumeroVueltas
+                : null;
+
+            int partidosRondaInicialReales = await db.Partidos.CountAsync(p => p.CategoriaId == cat.Id && (p.Fase == "Grupos" || p.Fase == "Liga"));
+            int partidosFaseFinalReales = await db.Partidos.CountAsync(p => p.CategoriaId == cat.Id && p.Fase != "Grupos" && p.Fase != "Liga");
+
+            r.PartidosTotal = CalcularPartidosProyectados(cat, conteosPorGrupo, totalActivos, numVueltasCfg, partidosRondaInicialReales, partidosFaseFinalReales);
+            r.PartidosJugados = await db.Partidos.CountAsync(p => p.CategoriaId == cat.Id && p.Estado == "Jugado");
+
+            if (cat.Formato == "Jornadas")
+            {
+                var ultimos = await db.Partidos
+                    .Where(p => p.CategoriaId == cat.Id && p.Estado == "Jugado")
+                    .Include(p => p.CompetidorA).ThenInclude(c => c.CompetidorIntegrantes).ThenInclude(ci => ci.Atleta)
+                    .Include(p => p.CompetidorB).ThenInclude(c => c.CompetidorIntegrantes).ThenInclude(ci => ci.Atleta)
+                    .OrderByDescending(p => p.FechaCaptura)
+                    .Take(5)
+                    .ToListAsync();
+
+                r.UltimosPartidos = ultimos.Select(p => new PartidoResumen
+                {
+                    Fecha = p.FechaCaptura?.ToString("dd/MM HH:mm") ?? "",
+                    NombreA = string.Join(" / ", p.CompetidorA.CompetidorIntegrantes.Select(ci => ci.Atleta.Nombre)),
+                    NombreB = string.Join(" / ", p.CompetidorB.CompetidorIntegrantes.Select(ci => ci.Atleta.Nombre)),
+                    NombreGanador = p.GanadorId == p.CompetidorAid
+                            ? string.Join(" / ", p.CompetidorA.CompetidorIntegrantes.Select(ci => ci.Atleta.Nombre))
+                            : string.Join(" / ", p.CompetidorB.CompetidorIntegrantes.Select(ci => ci.Atleta.Nombre))
+                }).ToList();
+            }
+
+            resumenCategorias.Add(r);
+        }
+
+        partidosTotal = resumenCategorias.Sum(r => r.PartidosTotal);
+    }
+}

@@ -1,0 +1,101 @@
+﻿@inject ProyectoArbitraje.Services.TorneoActualService TorneoActual
+@inject NavigationManager Nav
+@implements IDisposable
+
+@code {
+    protected override void OnInitialized()
+    {
+        TorneoActual.OnCambio += Refrescar;
+    }
+
+    private void Refrescar()
+    {
+        InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        TorneoActual.OnCambio -= Refrescar;
+    }
+
+    private void IrAInicio()
+    {
+        TorneoActual.SalirDelTorneo();
+        Nav.NavigateTo("/");
+    }
+}
+
+<div class="topbar">
+    <div class="topbar-side">
+        <a class="topbar-link" href="" @onclick="IrAInicio" @onclick:preventDefault="true">Inicio</a>
+    </div>
+
+    <div class="topbar-brand">Gestión de Arbitraje</div>
+
+    <div class="topbar-side topbar-side-right">
+        <AuthorizeView Context="sesion">
+            <Authorized>
+                @if (TorneoActual.TorneoId == null)
+                {
+                    <AuthorizeView Roles="Admin" Context="rolTorneos">
+                        <Authorized>
+                            <NavLink class="topbar-link" href="torneos">Torneos</NavLink>
+                        </Authorized>
+                        <NotAuthorized>
+                            <NavLink class="topbar-link" href="torneos">Entrar a un Torneo</NavLink>
+                        </NotAuthorized>
+                    </AuthorizeView>
+                }
+                else
+                {
+                    <AuthorizeView Roles="Admin" Context="rolPosRep">
+                        <Authorized>
+                            <NavLink class="topbar-link" href="posiciones">Posiciones</NavLink>
+                            <NavLink class="topbar-link" href="reporte">Reporte</NavLink>
+                        </Authorized>
+                    </AuthorizeView>
+                }
+                <div class="dropdown">
+                    <span class="topbar-link">@(sesion.User.Identity?.Name ?? "Usuario") ▾</span>
+                    <div class="dropdown-menu">
+                        <AuthorizeView Roles="Admin" Context="rolMenuUsuario">
+                            <Authorized>
+                                <a href="ranking">Ranking</a>
+                                <a href="usuarios">Usuarios</a>
+                                <a href="respaldo">Respaldo</a>
+                            </Authorized>
+                        </AuthorizeView>
+                        <form method="post" action="/logout">
+                            <AntiforgeryToken />
+                            <button type="submit" style="display:block; width:100%; text-align:left; background:none; border:none; cursor:pointer; font:inherit; padding:8px 16px; margin:0;">Cerrar sesión</button>
+                        </form>
+                    </div>
+                </div>
+            </Authorized>
+            <NotAuthorized>
+                <a class="topbar-link" href="/login">Iniciar sesión</a>
+            </NotAuthorized>
+        </AuthorizeView>
+    </div>
+</div>
+
+@if (TorneoActual.TorneoId != null)
+{
+    <AuthorizeView Context="sesionSub">
+        <Authorized>
+            <div class="subbar">
+                <AuthorizeView Roles="Admin" Context="rolSubAdmin1">
+                    <Authorized>
+                        <NavLink class="topbar-link" href="torneo-dashboard">Panel</NavLink>
+                        <NavLink class="topbar-link" href="config-torneo">Categorías</NavLink>
+                        <NavLink class="topbar-link" href="registro">Registro</NavLink>
+                    </Authorized>
+                </AuthorizeView>
+                <NavLink class="topbar-link" href="atletas">Atletas</NavLink>
+                <NavLink class="topbar-link" href="calendario">Calendario</NavLink>
+                <NavLink class="topbar-link" href="fasefinal">Fase Final</NavLink>
+                <NavLink class="topbar-link" href="config-canchas">Canchas</NavLink>
+            </div>
+        </Authorized>
+    </AuthorizeView>
+}

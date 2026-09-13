@@ -1,0 +1,1136 @@
+﻿@page "/registro"
+@attribute [Authorize(Roles = "Admin")]
+@using Microsoft.AspNetCore.Authorization
+@using ProyectoArbitraje.Data
+@using ProyectoArbitraje.Models
+@using ProyectoArbitraje.Services
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<TorneoContext> DbFactory
+@inject TorneoActualService TorneoActual
+@inject ILogger<Registro> Logger
+@inject IJSRuntime JS
+@inject CalendarioService CalendarioSvc
+
+<PageTitle>Registro de Atletas</PageTitle>
+
+@if (TorneoActual.TorneoId == null)
+{
+    <p class="vacio">No hay un torneo activo. <a href="">Ve a Inicio</a> y entra a uno primero.</p>
+    return;
+}
+
+<div class="pagina">
+    <div class="tarjeta-marcador pagina-header">
+        <h1>Registro</h1>
+        <p class="pagina-subtitulo">@TorneoActual.NombreTorneo</p>
+    </div>
+
+    @if (!string.IsNullOrEmpty(errorDebug))
+    {
+        <pre style="background:#ffe6e6; padding:10px; white-space:pre-wrap;">@errorDebug</pre>
+    }
+
+    <div class="tarjeta">
+        <h2>Selecciona la categoría</h2>
+        @if (categorias != null)
+        {
+            <div class="campos-fila">
+                <div class="campo" style="min-width:320px;">
+                    <select @bind="categoriaSeleccionadaId" @bind:after="OnCategoriaSeleccionada">
+                        <option value="0">-- Selecciona --</option>
+                        @foreach (var c in categorias)
+                        {
+                            <option value="@c.Id">@c.Nombre - @c.Modalidad - @c.Rama (@c.Formato)</option>
+                        }
+                    </select>
+                </div>
+
+                @if (categoriaActiva != null)
+                {
+                    <div class="campo">
+                        <button class="btn btn-danger" @onclick="EliminarCategoriaActiva">Eliminar esta categoría</button>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+
+    @if (categoriaActiva != null)
+    {
+        @if (categoriaActiva.Formato == "GruposFaseFinal")
+        {
+            <div class="tarjeta">
+                <h2>Grupos de esta categoría</h2>
+
+                @if (grupos != null && grupos.Any())
+                {
+                    <div>
+                        @foreach (var g in grupos.OrderBy(g => g.Letra))
+                        {
+                            <span class="badge badge-planeado chip">
+                                Grupo @g.Letra (@conteoAtletasPorGrupo.GetValueOrDefault(g.Id, 0))
+                                <button class="btn-chip-x" @onclick="() => EliminarGrupo(g)" title="Eliminar grupo">×</button>
+                            </span>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <p class="vacio">Todavía no hay grupos creados.</p>
+                }
+
+                <div class="campos-fila" style="margin-top:10px;">
+                    <div class="campo" style="max-width:140px;">
+                        <label>Agregar grupos hasta llegar a</label>
+                        <input type="number" min="1" max="20" @bind="numeroGrupos" />
+                    </div>
+                    <div class="campo">
+                        <button class="btn btn-secondary" @onclick="CrearGrupos">Crear / Agregar Grupos</button>
+                    </div>
+                </div>
+            </div>
+        }
+
+        <div class="tarjeta">
+            <h2>Registrar @(categoriaActiva.Modalidad == "Dobles" ? "pareja" : "atleta")</h2>
+
+            @if (categoriaActiva.Formato == "GruposFaseFinal")
+            {
+                <p class="nota">El grupo se asigna automáticamente según el ranking, para que queden equilibrados. Puedes moverlo después desde "Cambiar de grupo".</p>
+            }
+
+            @if (categoriaActiva.Modalidad == "Singles")
+            {
+                <div class="radio-grupo">
+                    <label>
+                        <input type="radio" checked="@atletaSingleEsNuevo" @onchange="() => atletaSingleEsNuevo = true" />
+                        Atleta nuevo
+                    </label>
+                    <label>
+                        <input type="radio" checked="@(!atletaSingleEsNuevo)" @onchange="() => atletaSingleEsNuevo = false" />
+                        Atleta ya registrado
+                    </label>
+                </div>
+
+                @if (atletaSingleEsNuevo)
+                {
+                    <div class="campos-fila">
+                        <div class="campo" style="max-width:220px;">
+                            <label>Nombre completo</label>
+                            <input @bind="nuevoNombreAtleta" />
+                        </div>
+                        <div class="campo" style="max-width:180px;">
+                            <label>Municipio</label>
+                            <select @bind="municipioSeleccionadoId">
+                                <option value="0">-- Selecciona --</option>
+                                @if (municipios != null)
+                                {
+                                    @foreach (var m in municipios)
+                                    {
+                                        <option value="@m.Id">@m.Nombre</option>
+                                    }
+                                }
+                            </select>
+                        </div>
+                        <div class="campo" style="max-width:100px;">
+                            <label>Género</label>
+                            @if (categoriaActiva.Rama == "Mixto")
+                            {
+                                <select @bind="generoSeleccionado">
+                                    <option value="">-- Selecciona --</option>
+                                    <option value="M">M</option>
+                                    <option value="F">F</option>
+                                </select>
+                            }
+                            else
+                            {
+                                <input value="@generoSeleccionado" disabled style="text-align:center; background:#eee;" />
+                            }
+                        </div>
+                        <div class="campo" style="max-width:110px;">
+                            <label>Año de nacimiento</label>
+                            @if (AniosPermitidos() is { } aniosPermitidosSingle)
+                            {
+                                <select @bind="anioNacimientoNuevo">
+                                    <option value="">-- Selecciona --</option>
+                                    @foreach (var anio in aniosPermitidosSingle)
+                                    {
+                                        <option value="@anio">@anio</option>                                        
+                                    }
+                                </select>
+                            }
+                            else
+                            {
+                                <input type="number" min="@(DateTime.Now.Year - 99)" max="@DateTime.Now.Year" @bind="anioNacimientoNuevo" />
+                            }
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <div class="campos-fila">
+                        @if (AniosPermitidos() == null)
+                        {
+                            <div class="campo" style="max-width:150px;">
+                                <label>Filtrar por año</label>
+                                <input type="number" min="@(DateTime.Now.Year - 99)" max="@DateTime.Now.Year" @bind="filtroAnioNacimiento" placeholder="Todos" />
+                            </div>
+                        }
+                        <div class="campo" style="max-width:220px;">
+                            <label>Filtrar por equipo</label>
+                            <select @bind="filtroMunicipioSingleId">
+                                <option value="0">-- Todos --</option>
+                                @foreach (var m in municipios!)
+                                {
+                                    <option value="@m.Id">@m.Nombre</option>
+                                }
+                            </select>
+                        </div>
+                    </div>
+                    <div class="campos-fila">
+                        <div class="campo" style="min-width:300px;">
+                            <label>Selecciona atleta</label>
+                            <select @bind="atletaSingleExistenteId">
+                                <option value="0">-- Selecciona --</option>
+                                @foreach (var a in AtletasCompatibles())
+                                {
+                                    <option value="@a.Id">@a.Nombre (@a.Municipio.Nombre) @(a.AnioNacimiento != null ? $" - {a.AnioNacimiento}" : "") @(string.IsNullOrEmpty(a.Genero) ? "" : $"[{a.Genero}]")</option>
+                                }
+                            </select>
+                        </div>
+                    </div>
+                }
+
+                <div style="margin-top:10px;">
+                    <button class="btn btn-primary" @onclick="RegistrarAtleta">Registrar</button>
+                </div>
+            }
+            else
+            {
+                <div style="display:flex; gap:14px; flex-wrap:wrap;">
+                    <div style="flex:1; min-width:280px;">@RenderIntegrante("Integrante 1", integrante1, integrante2)</div>
+                    <div style="flex:1; min-width:280px;">@RenderIntegrante("Integrante 2", integrante2, integrante1)</div>
+                </div>
+
+                <div style="margin-top:6px;">
+                    <button class="btn btn-primary" @onclick="RegistrarPareja">Registrar Pareja</button>
+                </div>
+            }
+
+            @if (!string.IsNullOrEmpty(mensajeError))
+            {
+                <p class="mensaje-error">@mensajeError</p>
+            }
+            @if (!string.IsNullOrEmpty(mensajeExito))
+            {
+                <p class="mensaje-exito">@mensajeExito</p>
+            }
+        </div>
+
+        <div class="tarjeta">
+            <h2>4. Atletas registrados en esta categoría</h2>
+
+            @if (competidoresActuales == null)
+            {
+                <p class="vacio">Cargando...</p>
+            }
+            else if (!competidoresActuales.Any())
+            {
+                <p class="vacio">Todavía no hay atletas registrados en esta categoría.</p>
+            }
+            else if (categoriaActiva.Formato == "GruposFaseFinal")
+            {
+                @foreach (var g in (grupos ?? new()).OrderBy(g => g.Letra))
+                {
+                    var enGrupo = competidoresActuales.Where(c => c.GrupoId == g.Id).ToList();
+                    <div class="subtarjeta" style="margin-bottom:14px;">
+                        <strong>Grupo @g.Letra</strong>
+                        @if (!enGrupo.Any())
+                        {
+                            <p class="vacio">Sin atletas en este grupo.</p>
+                        }
+                        else
+                        {
+                            <table class="tabla-limpia">
+                                <thead>
+                                    <tr><th>Nombre</th><th>Municipio</th><th>Estado</th><th></th></tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var atl in enGrupo)
+                                    {
+                                        <tr>
+                                            <td>@atl.NombreAtleta</td>
+                                            <td>@atl.NombreMunicipio</td>
+                                            <td><span class="badge @(atl.Activo ? "badge-jugado" : "badge-baja")">@(atl.Activo ? "Activo" : "Baja")</span></td>
+                                            <td class="col-accion">
+                                                @if (atl.Activo)
+                                                {
+                                                    <button class="btn btn-ghost" @onclick="() => DarDeBaja(atl.CompetidorId, atl.NombreAtleta)">Dar de baja</button>
+                                                }
+                                                <button class="btn btn-danger" @onclick="() => EliminarCompetidor(atl.CompetidorId, atl.NombreAtleta)">Eliminar</button>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        }
+                    </div>
+                }
+
+                
+                    var sinGrupo = competidoresActuales.Where(c => c.GrupoId == null).ToList();
+                
+                @if (sinGrupo.Any())
+                {
+                    <div class="subtarjeta">
+                        <strong>Sin grupo</strong>
+                        <table class="tabla-limpia">
+                            <thead>
+                                <tr><th>Nombre</th><th>Municipio</th><th>Estado</th><th></th></tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var atl in sinGrupo)
+                                {
+                                    <tr>
+                                        <td>@atl.NombreAtleta</td>
+                                        <td>@atl.NombreMunicipio</td>
+                                        <td><span class="badge @(atl.Activo ? "badge-jugado" : "badge-baja")">@(atl.Activo ? "Activo" : "Baja")</span></td>
+                                        <td class="col-accion">
+                                            @if (atl.Activo)
+                                            {
+                                                <button class="btn btn-ghost" @onclick="() => DarDeBaja(atl.CompetidorId, atl.NombreAtleta)">Dar de baja</button>
+                                            }
+                                            <button class="btn btn-danger" @onclick="() => EliminarCompetidor(atl.CompetidorId, atl.NombreAtleta)">Eliminar</button>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            }
+            else
+            {
+                <table class="tabla-limpia">
+                    <thead>
+                        <tr><th>Nombre</th><th>Municipio</th><th>Estado</th><th></th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var atl in competidoresActuales)
+                        {
+                            <tr>
+                                <td>@atl.NombreAtleta</td>
+                                <td>@atl.NombreMunicipio</td>
+                                <td><span class="badge @(atl.Activo ? "badge-jugado" : "badge-baja")">@(atl.Activo ? "Activo" : "Baja")</span></td>
+                                <td class="col-accion">
+                                    @if (atl.Activo)
+                                    {
+                                        <button class="btn btn-ghost" @onclick="() => DarDeBaja(atl.CompetidorId, atl.NombreAtleta)">Dar de baja</button>
+                                    }
+                                    <button class="btn btn-danger" @onclick="() => EliminarCompetidor(atl.CompetidorId, atl.NombreAtleta)">Eliminar</button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+
+        @if (grupos != null && grupos.Count > 1)
+        {
+            <hr class="cancha-divider" style="margin:20px 0;" />
+            <h3>Cambiar de grupo</h3>
+
+            <div class="campo" style="max-width:320px;">
+                <label>Buscar atleta</label>
+                <input @bind="buscarAtletaGrupoTexto" @bind:event="oninput" placeholder="Escribe un nombre..." />
+            </div>
+
+            @if (!string.IsNullOrWhiteSpace(buscarAtletaGrupoTexto))
+            {
+
+                var coincidencias = (competidoresActuales ?? new())
+                                            .Where(c => c.NombreAtleta.Contains(buscarAtletaGrupoTexto, StringComparison.OrdinalIgnoreCase))
+                                            .ToList();
+
+                        
+                @if (!coincidencias.Any())
+                {
+                    <p class="vacio">Sin coincidencias.</p>
+                }
+                else
+                {
+                    <div style="margin-top:8px;">
+                        @foreach (var c in coincidencias)
+                        {
+                            <div class="categoria-generar-row">
+                                <span class="categoria-generar-nombre">@c.NombreAtleta <span class="nota">(Grupo @(c.Letra ?? "sin asignar"))</span></span>
+                                <button class="btn btn-ghost" @onclick="() => SeleccionarParaMover(c)">Seleccionar</button>
+                            </div>
+                        }
+                    </div>
+                }
+            }
+
+            @if (competidorSeleccionadoParaMover != null)
+            {
+                <div class="subtarjeta" style="margin-top:12px;">
+                    <strong>@competidorSeleccionadoParaMover.NombreAtleta</strong>
+                    <p class="nota">Grupo actual: @(competidorSeleccionadoParaMover.Letra ?? "Sin asignar")</p>
+
+                    <div class="campos-fila">
+                        <div class="campo" style="max-width:180px;">
+                            <label>Mover a</label>
+                            <select @bind="grupoDestinoId">
+                                <option value="0">-- Selecciona --</option>
+                                @foreach (var g in (grupos ?? new()).Where(g => g.Id != competidorSeleccionadoParaMover.GrupoId).OrderBy(g => g.Letra))
+                                {
+                                    <option value="@g.Id">Grupo @g.Letra</option>
+                                }
+                            </select>
+                        </div>
+                        <button class="btn btn-primary" @onclick="ConfirmarMoverGrupo">Mover</button>
+                        <button class="btn btn-ghost" @onclick="CancelarMoverGrupo">Cancelar</button>
+                    </div>
+                </div>
+            }
+        }
+    }
+</div>
+
+@code {
+    private List<Categoria>? categorias;
+    private List<Municipio>? municipios;
+    private List<Grupo>? grupos;
+    private List<CompetidorFila>? competidoresActuales;
+    private List<Atleta>? atletasDisponibles;
+    private HashSet<int> atletaIdsYaRegistradosEnCategoria = new();
+
+    private int categoriaSeleccionadaId;
+    private Categoria? categoriaActiva;
+
+    private int numeroGrupos = 1;
+    private Dictionary<int, int> conteoAtletasPorGrupo = new();
+
+    private string nuevoNombreAtleta = "";
+    private int municipioSeleccionadoId;
+    private string generoSeleccionado = "";
+    private int? anioNacimientoNuevo;
+
+    private bool atletaSingleEsNuevo = true;
+    private int atletaSingleExistenteId;
+    private int? filtroAnioNacimiento;
+    private int filtroMunicipioSingleId;
+
+    private string buscarAtletaGrupoTexto = "";
+    private CompetidorFila? competidorSeleccionadoParaMover;
+    private int grupoDestinoId;
+
+    private IntegranteFormulario integrante1 = new();
+    private IntegranteFormulario integrante2 = new();
+
+    private string mensajeError = "";
+    private string mensajeExito = "";
+    private string? errorDebug;
+
+    private class CompetidorFila
+    {
+        public int CompetidorId { get; set; }
+        public string NombreAtleta { get; set; } = "";
+        public string NombreMunicipio { get; set; } = "";
+        public string? Letra { get; set; }
+        public int? GrupoId { get; set; }
+        public bool Activo { get; set; }
+    }
+
+    private class IntegranteFormulario
+    {
+        public bool EsNuevo { get; set; } = true;
+        public string NuevoNombre { get; set; } = "";
+        public int NuevoMunicipioId { get; set; }
+        public string NuevoGenero { get; set; } = "";
+        public int? AnioNacimiento { get; set; }
+        public int AtletaExistenteId { get; set; }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (TorneoActual.TorneoId == null) return;
+
+        try
+        {
+            using var db = await DbFactory.CreateDbContextAsync();
+            var torneoId = TorneoActual.TorneoId!.Value;
+
+            categorias = await db.Categorias.Include(c => c.Configuracion).Where(c => c.TorneoId == torneoId).ToListAsync();
+            municipios = await db.Municipios.OrderBy(m => m.Nombre).ToListAsync();
+            atletasDisponibles = await db.Atletas.Include(a => a.Municipio).OrderBy(a => a.Nombre).ToListAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error al cargar Registro para el torneo {TorneoId}", TorneoActual.TorneoId);
+            errorDebug = "Ocurrió un error al cargar esta página. Intenta recargar, o avisa al administrador si sigue pasando.";
+        }
+    }
+
+    private async Task OnCategoriaSeleccionada()
+    {
+        mensajeError = ""; mensajeExito = "";
+        buscarAtletaGrupoTexto = "";
+        competidorSeleccionadoParaMover = null;
+        grupoDestinoId = 0;
+        atletaSingleEsNuevo = true;
+        atletaSingleExistenteId = 0;
+        filtroAnioNacimiento = null;
+        filtroMunicipioSingleId = 0;
+
+        if (categoriaSeleccionadaId == 0) { categoriaActiva = null; atletaIdsYaRegistradosEnCategoria.Clear(); return; }
+
+        categoriaActiva = categorias!.First(c => c.Id == categoriaSeleccionadaId);
+
+        generoSeleccionado = categoriaActiva.Rama switch
+        {
+            "Varonil" => "M",
+            "Femenil" => "F",
+            _ => ""
+        };
+
+        await CargarGrupos();
+        await CargarCompetidores();
+        await CargarAtletasYaRegistrados();
+    }
+
+    private async Task CargarAtletasYaRegistrados()
+    {
+        if (categoriaActiva == null) { atletaIdsYaRegistradosEnCategoria.Clear(); return; }
+
+        using var db = await DbFactory.CreateDbContextAsync();
+        atletaIdsYaRegistradosEnCategoria = (await db.CompetidorIntegrantes
+            .Where(ci => ci.Competidor.CategoriaId == categoriaActiva.Id)
+            .Select(ci => ci.AtletaId)
+            .ToListAsync()).ToHashSet();
+    }
+
+    private List<int>? AniosPermitidos()
+    {
+        var cfg = categoriaActiva?.Configuracion;
+        if (cfg?.AnioNacimientoMin == null || cfg.AnioNacimientoMax == null) return null;
+
+        return Enumerable.Range(cfg.AnioNacimientoMin.Value, cfg.AnioNacimientoMax.Value - cfg.AnioNacimientoMin.Value + 1)
+            .OrderByDescending(a => a)
+            .ToList();
+    }
+
+    private List<Atleta> AtletasCompatibles()
+    {
+        if (atletasDisponibles == null || categoriaActiva == null) return new();
+
+        IEnumerable<Atleta> lista = categoriaActiva.Rama switch
+        {
+            "Varonil" => atletasDisponibles.Where(a => a.Genero == "M"),
+            "Femenil" => atletasDisponibles.Where(a => a.Genero == "F"),
+            _ => atletasDisponibles
+        };
+
+        lista = lista.Where(a => !atletaIdsYaRegistradosEnCategoria.Contains(a.Id));
+
+        var aniosPermitidos = AniosPermitidos();
+        if (aniosPermitidos != null)
+            lista = lista.Where(a => a.AnioNacimiento != null && aniosPermitidos.Contains(a.AnioNacimiento.Value));
+        else if (filtroAnioNacimiento != null)
+            lista = lista.Where(a => a.AnioNacimiento == filtroAnioNacimiento);
+
+        if (filtroMunicipioSingleId != 0)
+            lista = lista.Where(a => a.MunicipioId == filtroMunicipioSingleId);
+
+        return lista.ToList();
+    }
+
+    private async Task CargarGrupos()
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        grupos = await db.Grupos.Where(g => g.CategoriaId == categoriaActiva!.Id).OrderBy(g => g.Letra).ToListAsync();
+        numeroGrupos = grupos.Any() ? grupos.Count : 1;
+
+        conteoAtletasPorGrupo = await db.Competidores
+            .Where(c => c.CategoriaId == categoriaActiva!.Id && c.GrupoId != null)
+            .GroupBy(c => c.GrupoId!.Value)
+            .Select(g => new { GrupoId = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.GrupoId, x => x.Count);
+    }
+
+    private async Task CargarCompetidores()
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+
+        var datos = await db.Competidores
+            .Where(c => c.CategoriaId == categoriaActiva!.Id)
+            .Select(c => new
+            {
+                c.Id,
+                c.GrupoId,
+                c.Activo,
+                GrupoLetra = c.Grupo != null ? c.Grupo.Letra : null,
+                Integrantes = c.CompetidorIntegrantes.Select(ci => new
+                {
+                    ci.Atleta.Nombre,
+                    MunicipioNombre = ci.Atleta.Municipio.Nombre
+                }).ToList()
+            })
+            .ToListAsync();
+
+        competidoresActuales = datos.Select(d => new CompetidorFila
+        {
+            CompetidorId = d.Id,
+            NombreAtleta = string.Join(" / ", d.Integrantes.Select(i => i.Nombre)),
+            NombreMunicipio = string.Join(" / ", d.Integrantes.Select(i => i.MunicipioNombre)),
+            Letra = d.GrupoLetra,
+            GrupoId = d.GrupoId,
+            Activo = d.Activo
+        }).ToList();
+    }
+
+    private async Task EliminarGrupo(Grupo grupo)
+    {
+        mensajeError = ""; mensajeExito = "";
+        using var db = await DbFactory.CreateDbContextAsync();
+
+        bool tieneAtletas = await db.Competidores.AnyAsync(c => c.GrupoId == grupo.Id);
+        if (tieneAtletas)
+        {
+            mensajeError = $"El Grupo {grupo.Letra} tiene atletas registrados. Elimínalos primero.";
+            return;
+        }
+
+        bool tienePartidos = await db.Partidos.AnyAsync(p => p.GrupoId == grupo.Id);
+        if (tienePartidos)
+        {
+            mensajeError = $"El Grupo {grupo.Letra} ya tiene partidos generados en el calendario. No se puede eliminar.";
+            return;
+        }
+
+        var g = await db.Grupos.FindAsync(grupo.Id);
+        if (g != null) db.Grupos.Remove(g);
+        await db.SaveChangesAsync();
+        mensajeExito = $"Grupo {grupo.Letra} eliminado.";
+        await CargarGrupos();
+        await CargarCompetidores();
+    }
+
+    private async Task CrearGrupos()
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+
+        var letrasNecesarias = Enumerable.Range(0, numeroGrupos)
+            .Select(i => ((char)('A' + i)).ToString())
+            .ToList();
+
+        var existentes = grupos!.Select(g => g.Letra).ToHashSet();
+
+        foreach (var letra in letrasNecesarias.Where(l => !existentes.Contains(l)))
+        {
+            db.Grupos.Add(new Grupo { CategoriaId = categoriaActiva!.Id, Letra = letra });
+        }
+
+        await db.SaveChangesAsync();
+        await CargarGrupos();
+        mensajeExito = "Grupos actualizados.";
+    }
+
+    private async Task<int?> ElegirGrupoBalanceadoAsync(TorneoContext db, Categoria categoria, int nuevoCompetidorId)
+    {
+        var gruposCategoria = await db.Grupos.Where(g => g.CategoriaId == categoria.Id).ToListAsync();
+        if (!gruposCategoria.Any()) return null;
+
+        var infoGrupos = new List<(int GrupoId, int Cantidad, int SumaPuntos)>();
+        foreach (var g in gruposCategoria)
+        {
+            var idsGrupo = await db.Competidores.Where(c => c.GrupoId == g.Id).Select(c => c.Id).ToListAsync();
+            int suma = 0;
+            foreach (var id in idsGrupo) suma += await CalcularPuntosPreviosAsync(db, id, categoria);
+            infoGrupos.Add((g.Id, idsGrupo.Count, suma));
+        }
+
+        var elegido = infoGrupos.OrderBy(x => x.Cantidad).ThenBy(x => x.SumaPuntos).First();
+        return elegido.GrupoId;
+    }
+
+    private async Task<int> CalcularPuntosPreviosAsync(TorneoContext db, int competidorId, Categoria categoria)
+    {
+        var integrantes = await db.CompetidorIntegrantes
+            .Where(ci => ci.CompetidorId == competidorId)
+            .Include(ci => ci.Atleta)
+            .ToListAsync();
+
+        int puntos = 0;
+        foreach (var integrante in integrantes)
+        {
+            var atleta = integrante.Atleta;
+            string ramaAtleta = categoria.Rama == "Mixto"
+                ? (atleta.Genero == "M" ? "Varonil" : "Femenil")
+                : categoria.Rama;
+
+            puntos += categoria.Modalidad == "Singles"
+                ? (await db.RankingActuals.FirstOrDefaultAsync(r => r.AtletaId == atleta.Id && r.Modalidad == categoria.Modalidad && r.Rama == ramaAtleta))?.PuntosTotales ?? 0
+                : (await db.RankingCombinadoPorAtleta.FirstOrDefaultAsync(r => r.AtletaId == atleta.Id && r.Rama == ramaAtleta))?.PuntosCombinados ?? 0;
+        }
+        return puntos;
+    }
+
+    private void SeleccionarParaMover(CompetidorFila c)
+    {
+        competidorSeleccionadoParaMover = c;
+        grupoDestinoId = 0;
+    }
+
+    private void CancelarMoverGrupo()
+    {
+        competidorSeleccionadoParaMover = null;
+        grupoDestinoId = 0;
+    }
+
+    private async Task ConfirmarMoverGrupo()
+    {
+        if (competidorSeleccionadoParaMover == null || grupoDestinoId == 0) return;
+
+        string letraDestino = grupos?.FirstOrDefault(g => g.Id == grupoDestinoId)?.Letra ?? "?";
+        bool confirmado = await JS.InvokeAsync<bool>("confirm",
+            $"¿Mover a {competidorSeleccionadoParaMover.NombreAtleta} del Grupo {competidorSeleccionadoParaMover.Letra ?? "sin asignar"} al Grupo {letraDestino}?");
+        if (!confirmado) return;
+
+        await MoverDeGrupo(competidorSeleccionadoParaMover.CompetidorId, grupoDestinoId);
+
+        competidorSeleccionadoParaMover = null;
+        grupoDestinoId = 0;
+        buscarAtletaGrupoTexto = "";
+    }
+
+    private async Task MoverDeGrupo(int competidorId, int nuevoGrupoId)
+    {
+        mensajeError = ""; mensajeExito = "";
+        using var db = await DbFactory.CreateDbContextAsync();
+
+        var competidor = await db.Competidores.FindAsync(competidorId);
+        if (competidor == null) return;
+
+        bool yaHayPartidoDeGrupos = await db.Partidos.AnyAsync(p => p.CategoriaId == competidor.CategoriaId && p.Fase == "Grupos");
+        if (yaHayPartidoDeGrupos)
+        {
+            mensajeError = "Ya se generó el calendario de grupos; no se puede cambiar de grupo.";
+            return;
+        }
+
+        competidor.GrupoId = nuevoGrupoId;
+        await db.SaveChangesAsync();
+
+        mensajeExito = "Competidor movido de grupo.";
+        await CargarGrupos();
+        await CargarCompetidores();
+    }
+
+    private async Task RegistrarAtleta()
+    {
+        mensajeError = ""; mensajeExito = "";
+
+        using var db = await DbFactory.CreateDbContextAsync();
+        Atleta atleta;
+
+        if (!atletaSingleEsNuevo)
+        {
+            if (atletaSingleExistenteId == 0) { mensajeError = "Selecciona un atleta existente."; return; }
+
+            var atletaExistente = atletasDisponibles!.FirstOrDefault(a => a.Id == atletaSingleExistenteId);
+            if (atletaExistente == null) { mensajeError = "Atleta no encontrado."; return; }
+
+            if (categoriaActiva!.Rama == "Varonil" && atletaExistente.Genero != "M") { mensajeError = "Esta categoría es Varonil."; return; }
+            if (categoriaActiva.Rama == "Femenil" && atletaExistente.Genero != "F") { mensajeError = "Esta categoría es Femenil."; return; }
+
+            var aniosPermitidos = AniosPermitidos();
+            if (aniosPermitidos != null && (atletaExistente.AnioNacimiento == null || !aniosPermitidos.Contains(atletaExistente.AnioNacimiento.Value)))
+            {
+                mensajeError = $"Esta categoría solo admite nacidos entre {aniosPermitidos.Min()} y {aniosPermitidos.Max()}.";
+                return;
+            }
+
+            atleta = atletaExistente;
+        }
+        else
+        {
+            if (string.IsNullOrWhiteSpace(nuevoNombreAtleta)) { mensajeError = "Ponle un nombre al atleta."; return; }
+            if (municipioSeleccionadoId == 0) { mensajeError = "Selecciona un municipio."; return; }
+            if (categoriaActiva!.Rama == "Varonil" && generoSeleccionado == "F") { mensajeError = "Esta categoría es Varonil."; return; }
+            if (categoriaActiva.Rama == "Femenil" && generoSeleccionado == "M") { mensajeError = "Esta categoría es Femenil."; return; }
+
+            var aniosPermitidosNuevo = AniosPermitidos();
+            if (aniosPermitidosNuevo != null && (anioNacimientoNuevo == null || !aniosPermitidosNuevo.Contains(anioNacimientoNuevo.Value)))
+            {
+                mensajeError = $"Esta categoría solo admite nacidos entre {aniosPermitidosNuevo.Min()} y {aniosPermitidosNuevo.Max()}.";
+                return;
+            }
+
+            var existente = await db.Atletas.FirstOrDefaultAsync(a =>
+                a.Nombre == nuevoNombreAtleta.Trim() && a.MunicipioId == municipioSeleccionadoId);
+
+            if (existente != null)
+            {
+                atleta = existente;
+            }
+            else
+            {
+                atleta = new Atleta
+                {
+                    Nombre = nuevoNombreAtleta.Trim(),
+                    MunicipioId = municipioSeleccionadoId,
+                    Genero = string.IsNullOrEmpty(generoSeleccionado) ? null : generoSeleccionado,
+                    AnioNacimiento = anioNacimientoNuevo
+                };
+                db.Atletas.Add(atleta);
+                await db.SaveChangesAsync();
+            }
+        }
+
+        int? grupoId = categoriaActiva!.Formato == "GruposFaseFinal"
+            ? await ElegirGrupoBalanceadoAsync(db, categoriaActiva, 0)
+            : null;
+
+        var competidor = new Competidore
+        {
+            CategoriaId = categoriaActiva.Id,
+            Activo = true,
+            GrupoId = grupoId
+        };
+        competidor.CompetidorIntegrantes.Add(new CompetidorIntegrante { AtletaId = atleta.Id });
+        db.Competidores.Add(competidor);
+
+        try { await db.SaveChangesAsync(); }
+        catch (DbUpdateException) { mensajeError = "Este atleta ya está registrado en esta misma categoría."; return; }
+
+        nuevoNombreAtleta = ""; municipioSeleccionadoId = 0;
+        anioNacimientoNuevo = null;
+        atletaSingleEsNuevo = true; atletaSingleExistenteId = 0;
+        mensajeExito = "¡Atleta registrado!";
+
+        atletasDisponibles = await db.Atletas.Include(a => a.Municipio).OrderBy(a => a.Nombre).ToListAsync();
+        await CargarCompetidores();
+        await CargarAtletasYaRegistrados();
+        if (categoriaActiva.Formato == "GruposFaseFinal") await CargarGrupos();
+    }
+
+    private async Task RegistrarPareja()
+    {
+        mensajeError = ""; mensajeExito = "";
+
+        using var db = await DbFactory.CreateDbContextAsync();
+
+        var (atleta1, error1) = await ResolverAtleta(db, integrante1);
+        if (error1 != null) { mensajeError = error1; return; }
+
+        var (atleta2, error2) = await ResolverAtleta(db, integrante2);
+        if (error2 != null) { mensajeError = error2; return; }
+
+        if (atleta1!.Id == atleta2!.Id) { mensajeError = "Los dos integrantes no pueden ser la misma persona."; return; }
+        if (atleta1.MunicipioId != atleta2.MunicipioId) { mensajeError = "Los dos integrantes deben ser del mismo municipio/equipo."; return; }
+
+        if (categoriaActiva!.Rama == "Varonil" && (atleta1.Genero != "M" || atleta2.Genero != "M")) { mensajeError = "Ambos deben ser 'M'."; return; }
+        if (categoriaActiva.Rama == "Femenil" && (atleta1.Genero != "F" || atleta2.Genero != "F")) { mensajeError = "Ambas deben ser 'F'."; return; }
+        if (categoriaActiva.Rama == "Mixto")
+        {
+            var generos = new[] { atleta1.Genero, atleta2.Genero };
+            if (string.IsNullOrEmpty(atleta1.Genero) || string.IsNullOrEmpty(atleta2.Genero)) { mensajeError = "Ambos deben tener género definido."; return; }
+            if (!(generos.Contains("M") && generos.Contains("F"))) { mensajeError = "Debe ser 1 hombre y 1 mujer."; return; }
+        }
+
+        int? grupoId = categoriaActiva.Formato == "GruposFaseFinal"
+            ? await ElegirGrupoBalanceadoAsync(db, categoriaActiva, 0)
+            : null;
+
+        var competidor = new Competidore
+        {
+            CategoriaId = categoriaActiva.Id,
+            Activo = true,
+            GrupoId = grupoId
+        };
+        competidor.CompetidorIntegrantes.Add(new CompetidorIntegrante { AtletaId = atleta1.Id });
+        competidor.CompetidorIntegrantes.Add(new CompetidorIntegrante { AtletaId = atleta2.Id });
+        db.Competidores.Add(competidor);
+
+        try { await db.SaveChangesAsync(); }
+        catch (DbUpdateException) { mensajeError = "Uno de los dos atletas ya está registrado en esta misma categoría."; return; }
+
+        integrante1 = new(); integrante2 = new();
+        mensajeExito = "¡Pareja registrada!";
+
+        atletasDisponibles = await db.Atletas.Include(a => a.Municipio).OrderBy(a => a.Nombre).ToListAsync();
+        await CargarCompetidores();
+        await CargarAtletasYaRegistrados();
+        if (categoriaActiva.Formato == "GruposFaseFinal") await CargarGrupos();
+    }
+
+    private async Task<(Atleta? atleta, string? error)> ResolverAtleta(TorneoContext db, IntegranteFormulario integrante)
+    {
+        var aniosPermitidos = AniosPermitidos();
+
+        if (!integrante.EsNuevo)
+        {
+            if (integrante.AtletaExistenteId == 0) return (null, "Selecciona un atleta existente para ambos integrantes.");
+            var atleta = atletasDisponibles!.First(a => a.Id == integrante.AtletaExistenteId);
+
+            if (aniosPermitidos != null && (atleta.AnioNacimiento == null || !aniosPermitidos.Contains(atleta.AnioNacimiento.Value)))
+                return (null, $"Esta categoría solo admite nacidos entre {aniosPermitidos.Min()} y {aniosPermitidos.Max()}.");
+
+            return (atleta, null);
+        }
+
+        if (string.IsNullOrWhiteSpace(integrante.NuevoNombre)) return (null, "Ponle nombre a ambos integrantes nuevos.");
+        if (integrante.NuevoMunicipioId == 0) return (null, "Selecciona municipio para ambos integrantes nuevos.");
+
+        if (aniosPermitidos != null && (integrante.AnioNacimiento == null || !aniosPermitidos.Contains(integrante.AnioNacimiento.Value)))
+            return (null, $"Esta categoría solo admite nacidos entre {aniosPermitidos.Min()} y {aniosPermitidos.Max()}.");
+
+        string genero = categoriaActiva!.Rama switch
+        {
+            "Varonil" => "M",
+            "Femenil" => "F",
+            _ => integrante.NuevoGenero
+        };
+
+        if (categoriaActiva.Rama == "Mixto" && string.IsNullOrEmpty(genero))
+            return (null, "Selecciona el género de ambos integrantes nuevos.");
+
+        var existente = await db.Atletas.FirstOrDefaultAsync(a =>
+            a.Nombre == integrante.NuevoNombre.Trim() && a.MunicipioId == integrante.NuevoMunicipioId);
+
+        if (existente != null) return (existente, null);
+
+        var nuevo = new Atleta { Nombre = integrante.NuevoNombre.Trim(), MunicipioId = integrante.NuevoMunicipioId, Genero = genero, AnioNacimiento = integrante.AnioNacimiento };
+        db.Atletas.Add(nuevo);
+        await db.SaveChangesAsync();
+        return (nuevo, null);
+    }
+
+    private RenderFragment RenderIntegrante(string titulo, IntegranteFormulario integrante, IntegranteFormulario otro) => __builder =>
+    {
+        int? filtroMunicipioId = null;
+        string? nombreMunicipioFiltro = null;
+
+        if (otro.EsNuevo && otro.NuevoMunicipioId != 0)
+        {
+            filtroMunicipioId = otro.NuevoMunicipioId;
+            nombreMunicipioFiltro = municipios?.FirstOrDefault(m => m.Id == otro.NuevoMunicipioId)?.Nombre;
+        }
+        else if (!otro.EsNuevo && otro.AtletaExistenteId != 0)
+        {
+            var atletaOtro = atletasDisponibles?.FirstOrDefault(a => a.Id == otro.AtletaExistenteId);
+            filtroMunicipioId = atletaOtro?.MunicipioId;
+            nombreMunicipioFiltro = atletaOtro?.Municipio?.Nombre;
+        }
+
+        var aniosPermitidosPareja = AniosPermitidos(); 
+
+        var listaFiltrada = (atletasDisponibles ?? new List<Atleta>())
+            .Where(a => filtroMunicipioId == null || a.MunicipioId == filtroMunicipioId)
+            .Where(a => a.Id != otro.AtletaExistenteId)
+            .Where(a => !atletaIdsYaRegistradosEnCategoria.Contains(a.Id))
+            .Where(a => aniosPermitidosPareja == null || (a.AnioNacimiento != null && aniosPermitidosPareja.Contains(a.AnioNacimiento.Value)))
+            .ToList();
+
+        <div class="subtarjeta">
+            <strong>@titulo</strong>
+
+            <div class="radio-grupo">
+                <label>
+                    <input type="radio" checked="@integrante.EsNuevo" @onchange="() => integrante.EsNuevo = true" />
+                    Atleta nuevo
+                </label>
+                <label>
+                    <input type="radio" checked="@(!integrante.EsNuevo)" @onchange="() => integrante.EsNuevo = false" />
+                    Atleta ya registrado
+                </label>
+            </div>
+
+            @if (integrante.EsNuevo)
+            {
+                <div style="display:flex; gap:10px; align-items:end; flex-wrap:wrap;">
+                    <div>
+                        <label>Nombre:</label><br />
+                        <input @bind="integrante.NuevoNombre" style="width:200px;" />
+                    </div>
+                    <div>
+                        <label>Municipio:</label><br />
+                        <select @bind="integrante.NuevoMunicipioId">
+                            <option value="0">-- Selecciona --</option>
+                            @if (municipios != null)
+                            {
+                                @foreach (var m in municipios)
+                                {
+                                    <option value="@m.Id">@m.Nombre</option>
+                                }
+                            }
+                        </select>
+                    </div>
+                    <div>
+                        <label>Género:</label><br />
+                        @if (categoriaActiva!.Rama == "Mixto")
+                        {
+                            <select @bind="integrante.NuevoGenero">
+                                <option value="">--</option>
+                                <option value="M">M</option>
+                                <option value="F">F</option>
+                            </select>
+                        }
+                        else
+                        {
+                            <input value="@(categoriaActiva.Rama == "Varonil" ? "M" : "F")" disabled style="width:50px; text-align:center; background:#eee;" />
+                        }
+                    </div>
+                    <div>
+                        <label>Edad:</label><br />
+                        @if (AniosPermitidos() is { } aniosPermitidosDobles)
+                        {
+                            <select @bind="integrante.AnioNacimiento" style="width:80px;">
+                                <option value="">--</option>
+                                @foreach (var anio in aniosPermitidosDobles)
+                                {
+                                    <option value="@anio">@anio</option>
+                                }
+                            </select>
+                        }
+                        else
+                        {
+                            <input type="number" min="@(DateTime.Now.Year - 99)" max="@DateTime.Now.Year" @bind="integrante.AnioNacimiento" style="width:70px;" />
+                        }
+                    </div>
+                </div>
+            }
+            else
+            {
+                <div>
+                    <label>Selecciona atleta:</label>
+                    @if (nombreMunicipioFiltro != null)
+                    {
+                        <span style="color:#666; font-size:0.9em;"> (mostrando solo atletas de @nombreMunicipioFiltro)</span>
+                    }
+                    <br />
+                    <select @bind="integrante.AtletaExistenteId" style="width:300px;">
+                        <option value="0">-- Selecciona --</option>
+                        @foreach (var a in listaFiltrada)
+                        {
+                            <option value="@a.Id">@a.Nombre (@a.Municipio.Nombre) @(a.AnioNacimiento != null ? $" - {a.AnioNacimiento}" : "") @(string.IsNullOrEmpty(a.Genero) ? "" : $"[{a.Genero}]")</option>
+                        }
+                    </select>
+
+                    @if (filtroMunicipioId != null && !listaFiltrada.Any())
+                    {
+                        <p style="color:#b00; font-size:0.9em;">No hay más atletas disponibles de ese municipio — registra uno nuevo.</p>
+                    }
+                </div>
+            }
+        </div>
+    };
+
+    private async Task DarDeBaja(int competidorId, string nombre)
+    {
+        bool confirmado = await JS.InvokeAsync<bool>("confirm", $"¿Dar de baja a {nombre}?");
+        if (!confirmado) return;
+
+        mensajeError = ""; mensajeExito= "";
+        var (ok, msg, _) = await CalendarioSvc.DarDeBajaCompetidorAsync(competidorId);
+        if (ok) mensajeExito = msg; else mensajeError = msg;
+        await CargarCompetidores();
+    }
+
+    private async Task EliminarCompetidor(int competidorId, string nombre)
+    {
+        bool confirmado = await JS.InvokeAsync<bool>("confirm", $"¿Eliminar a {nombre} de esta categoria? Esta acción no se puede deshacer.");
+        if (!confirmado) return;
+
+        mensajeError = ""; mensajeExito = "";
+        using var db = await DbFactory.CreateDbContextAsync();
+
+        bool activo = await db.Partidos.AnyAsync(p =>
+            (p.CompetidorAid == competidorId || p.CompetidorBid == competidorId) &&
+            (p.Estado == "Jugado" || p.Estado == "EnCancha"));
+
+        if (activo) { mensajeError = "Este atleta ya tiene partidos jugados o en curso. No se puede eliminar."; return; }
+
+        try
+        {
+            db.Partidos.RemoveRange(db.Partidos.Where(p => p.CompetidorAid == competidorId || p.CompetidorBid == competidorId));
+            db.CompetidorIntegrantes.RemoveRange(db.CompetidorIntegrantes.Where(ci => ci.CompetidorId == competidorId));
+            db.ByesFaseFinal.RemoveRange(db.ByesFaseFinal.Where(b => b.CompetidorId == competidorId));
+
+            var competidor = await db.Competidores.FindAsync(competidorId);
+            if (competidor != null) db.Competidores.Remove(competidor);
+
+            await db.SaveChangesAsync();
+        }
+        catch (DbUpdateException)
+        {
+            mensajeError = "No se pudo eliminar: este atleta sigue referenciado en la fase final (por ejemplo, un bye). Revisa la categoría.";
+            return;
+        }
+
+        mensajeExito = "Eliminado correctamente.";
+        await CargarCompetidores();
+        await CargarGrupos();
+    }
+
+    private async Task EliminarCategoriaActiva()
+    {
+        mensajeError = ""; mensajeExito = "";
+
+        bool confirmado = await JS.InvokeAsync<bool>("confirm",
+            $"¿Eliminar la categoría '{categoriaActiva!.Nombre} {categoriaActiva.Modalidad} {categoriaActiva.Rama}' por completo?");
+        if (!confirmado) return;
+
+        using var db = await DbFactory.CreateDbContextAsync();
+        using var transaccion = await db.Database.BeginTransactionAsync();
+
+        try
+        {
+            var competidorIds = await db.Competidores.Where(c => c.CategoriaId == categoriaActiva.Id).Select(c => c.Id).ToListAsync();
+            var partidoIds = await db.Partidos.Where(p => p.CategoriaId == categoriaActiva.Id).Select(p => p.Id).ToListAsync();
+
+            var setsABorrar = await db.SetsPartidos.Where(s => partidoIds.Contains(s.PartidoId)).ToListAsync();
+            db.SetsPartidos.RemoveRange(setsABorrar);
+
+            var byesABorrar = await db.ByesFaseFinal.Where(b => b.CategoriaId == categoriaActiva.Id).ToListAsync();
+            db.ByesFaseFinal.RemoveRange(byesABorrar);
+
+            var partidosABorrar = await db.Partidos.Where(p => p.CategoriaId == categoriaActiva.Id).ToListAsync();
+            db.Partidos.RemoveRange(partidosABorrar);
+
+            var integrantesABorrar = await db.CompetidorIntegrantes.Where(ci => competidorIds.Contains(ci.CompetidorId)).ToListAsync();
+            db.CompetidorIntegrantes.RemoveRange(integrantesABorrar);
+
+            var competidoresABorrar = await db.Competidores.Where(c => c.CategoriaId == categoriaActiva.Id).ToListAsync();
+            db.Competidores.RemoveRange(competidoresABorrar);
+
+            var rankingABorrar = await db.RankingHistorials.Where(r => r.CategoriaId == categoriaActiva.Id).ToListAsync();
+            db.RankingHistorials.RemoveRange(rankingABorrar);
+
+            var gruposABorrar = await db.Grupos.Where(g => g.CategoriaId == categoriaActiva.Id).ToListAsync();
+            db.Grupos.RemoveRange(gruposABorrar);
+
+            await db.SaveChangesAsync();
+
+            var cat = await db.Categorias.FindAsync(categoriaActiva.Id);
+            if (cat != null) db.Categorias.Remove(cat);
+            await db.SaveChangesAsync();
+
+            await transaccion.CommitAsync();
+        }
+        catch
+        {
+            await transaccion.RollbackAsync();
+            mensajeError = "Ocurrió un error al eliminar la categoría. No se borró nada.";
+            return;
+        }
+
+        categoriaSeleccionadaId = 0;
+        categoriaActiva = null;
+        competidoresActuales = null;
+        categorias = await db.Categorias.Include(c => c.Configuracion).Where(c => c.TorneoId == TorneoActual.TorneoId).ToListAsync();
+        mensajeExito = "Categoría eliminada.";
+    }
+}

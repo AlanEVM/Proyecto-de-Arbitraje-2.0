@@ -1,0 +1,809 @@
+﻿@page "/calendario"
+@implements IDisposable
+@using Microsoft.AspNetCore.Authorization
+@using ProyectoArbitraje.Data
+@using ProyectoArbitraje.Models
+@using ProyectoArbitraje.Services
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<TorneoContext> DbFactory
+@inject TorneoActualService TorneoActual
+@inject CalendarioService CalendarioSvc
+@inject IJSRuntime JS
+@inject TorneoEventBus EventBus
+@inject ILogger<Calendario> Logger
+@inject AuthenticationStateProvider AuthStateProvider
+
+<PageTitle>Calendario</PageTitle>
+
+@if (TorneoActual.TorneoId == null)
+{
+    <div class="pagina">
+        <p class="vacio">No hay un torneo activo. <a href="">Ve a Inicio</a> y entra a uno primero.</p>
+    </div>
+    return;
+}
+
+<div class="pagina">
+    <div class="tarjeta-marcador pagina-header">
+        <h1>Calendario - @TorneoActual.NombreTorneo</h1>
+    </div>
+
+    @if (!string.IsNullOrEmpty(errorDebug))
+    {
+        <div class="tarjeta">
+            <p class="mensaje-error">Ocurrió un error:</p>
+            <pre style="white-space:pre-wrap; font-size:0.8rem; color:var(--falta);">@errorDebug</pre>
+        </div>
+    }
+
+    @if (!esSoloLectura)
+    {
+        <details class="tarjeta">
+            <summary style="cursor:pointer; color:var(--secundario); font-weight:600;">Generar partidos por categoría</summary>
+            <div style="margin-top: 10px;">
+                @if (categorias != null)
+                {
+                    @foreach (var c in categorias)
+                    {
+                        string claseFormato = c.Formato switch
+                        {
+                            "GruposFaseFinal" => "badge-formato-grupos",
+                            "Jornadas" => "badge-formato-jornadas",
+                            _ => "badge-formato-eliminatoria"
+                        };
+
+                        <div class="categoria-generar-row">
+                            <span class="categoria-generar-nombre">
+                                @c.Nombre · @c.Modalidad · @c.Rama
+                                <span class="badge @claseFormato">@c.Formato</span>
+                            </span>
+
+                            @if (c.Formato == "GruposFaseFinal")
+                            {
+                                @if (categoriasConGruposGenerados.Contains(c.Id))
+                                {
+                                    <span class="nota">Partidos de grupo ya generados</span>
+                                }
+                                else
+                                {
+                                    <button class="btn btn-primary" @onclick="() => GenerarGrupos(c.Id)">Generar partidos de grupo</button>
+                                }
+                            }
+                            else if (c.Formato == "Jornadas")
+                            {
+                                var prog = progresoJornadasPorCategoria.GetValueOrDefault(c.Id);
+                                if (prog == null || prog.TotalJornadas == 0)
+                                {
+                                    <span class="nota">Registra al menos 2 atletas activos.</span>
+                                }
+                                else if (prog.UltimaGenerada >= prog.TotalJornadas)
+                                {
+                                    <span class="nota">Todas las jornadas generadas (@prog.TotalJornadas de @prog.TotalJornadas).</span>
+                                }
+                                else
+                                {
+                                    <button class="btn btn-primary" @onclick="() => GenerarJornada(c.Id)">Generar Jornada @(prog.UltimaGenerada + 1) de @prog.TotalJornadas</button>
+                                }
+                            }
+                            else if (c.Formato == "RoundRobin")
+                            {
+                                @if (categoriasConRoundRobinGenerado.Contains(c.Id))
+                                {
+                                    <span class="nota">Partidos generados (todos contra todos).</span>
+                                }
+                                else
+                                {
+                                    <button class="btn btn-primary" @onclick="() => GenerarRoundRobin(c.Id)">Generar partidos (todos contra todos)</button>
+                                }
+                            }
+                            else
+                            {
+                                int activosElim = conteoActivosEliminatoria.GetValueOrDefault(c.Id);
+                                @if (activosElim >= 2 && activosElim <= 6)
+                                {
+                                    <button class="btn btn-primary" @onclick="() => GenerarRoundRobin(c.Id)">Generar partidos (todos contra todos, @activosElim inscritos)</button>
+                                }
+                                else
+                                {
+                                    <span class="nota">(Eliminatoria: se arma en Fase Final)</span>
+                                }
+                            }
+                        </div>
+                    }
+                }
+            </div>
+        </details>
+    }
+
+    <button class="btn btn-ghost" style="margin-bottom:15px;" @onclick="Refrescar">Actualizar Canchas</button>
+</div>
+
+@if (!string.IsNullOrEmpty(mensajeInfo))
+{
+    <p class="@(esExitoInfo ? "mensaje-exito" : "mensaje-error") mensaje-flotante">@mensajeInfo</p>
+}
+
+<!-- ===================== PARTIDOS POSPUESTOS ===================== -->
+@if (pospuestos != null && pospuestos.Any())
+{
+    <details class="tarjeta">
+        <summary style="cursor:pointer; color:var(--secundario); font-weight:600;">Partidos pospuestos (@pospuestos.Count)</summary>
+        <div style="margin-top: 10px;">
+            @foreach (var p in pospuestos)
+            {
+                <div class="categoria-generar-row">
+                    <span class="categoria-generar-nombre">
+                        @p.Categoria @(p.Grupo != null ? $"· Grupo {p.Grupo}" : "") - @p.NombreA vs @p.NombreB
+                    </span>
+                    @if (!esSoloLectura)
+                    {
+                        <button class="btn btn-ghost" @onclick="() => Reactivar(p.Partido.Id)">↩ Reactivar</button>
+                    }
+                </div>
+            }
+        </div>        
+    </details>
+}
+
+@if (ultimosCapturados.Any() && !esSoloLectura)
+{
+    <details class="tarjeta">
+        <summary style="cursor:pointer; color:var(--secundario); font-weight:600;">Últimos resultados capturados (corregir)</summary>
+        <div style="margin-top: 10px;">
+            @foreach (var item in ultimosCapturados)
+            {
+                <div class="categoria-generar-row">
+                    <span class="categoria-generar-nombre">
+                        @item.Categoria @(item.Grupo != null ? $"· Grupo {item.Grupo}" : "") @(item.Jornada != null ? $"· Jornada {item.Jornada}" : "") - @item.NombreA vs @item.NombreB
+                    </span>
+                    @if (corrigiendoPartidoId != item.Partido.Id)
+                    {
+                        <button class="btn btn-ghost" @onclick="() => AbrirCorreccion(item)">Corregir</button>
+                    }
+                </div>
+
+                @if (corrigiendoPartidoId == item.Partido.Id)
+                {
+                    <div class="captura-sets">
+                        <div class="captura-set">
+                            <label>Set 1</label>
+                            @item.NombreA: <input type="number" min="0" class="input-mini" @bind="s1aC" /><br />
+                            @item.NombreB: <input type="number" min="0" class="input-mini" @bind="s1bC" />
+                        </div>
+                        @if (modalidadSetsCorr == "2 de 3 Sets")
+                        {
+                            <div class="captura-set">
+                                <label>Set 2</label>
+                                @item.NombreA: <input type="number" min="0" class="input-mini" @bind="s2aC" /><br />
+                                @item.NombreB: <input type="number" min="0" class="input-mini" @bind="s2bC" />
+                            </div>
+                            <div class="captura-set">
+                                <label>Set 3</label>
+                                @item.NombreA: <input type="number" min="0" class="input-mini" @bind="s3aC" /><br />
+                                @item.NombreB: <input type="number" min="0" class="input-mini" @bind="s3bC" />
+                            </div>
+                        }
+                    </div>
+                    <div style="margin-top: 10px;">
+                        <button class="btn btn-primary" @onclick="() => GuardarCorreccion(item.Partido.Id)">Guardar Corrección</button>
+                        <button class="btn btn-ghost" @onclick="CancelarCorreccion">Cancelar</button>
+                    </div>
+                }
+            }
+        </div>
+    </details>
+}
+
+<!-- ===================== COLA DE PARTIDOS ===================== -->
+<h2>Cola de partidos</h2>
+
+@if (cola == null)
+{
+    <p class="vacio">Cargando...</p>
+}
+else if (!cola.Any())
+{
+    <p class="vacio">No hay partidos pendientes. Genera el calendario de alguna categoría de arriba.</p>
+}
+else
+{
+    <div class="cola-partidos">
+        @foreach (var (item, idx) in cola.Select((x, index) => (x, index)))
+        {
+            int i = idx + 1;
+            bool enCancha = item.Partido.Estado == "EnCancha";
+            bool estaCapturando = partidoCapturandoId == item.Partido.Id;
+
+            <div class="partido-card @(enCancha ? "en-cancha" : "")">
+                <div class="partido-card-top">
+                    <div>
+                        <strong>#@i</strong>
+                        @if (enCancha)
+                        {
+                            <span class="badge badge-en-cancha"> · Cancha @item.CanchaNumero</span>
+                        }
+                        else
+                        {
+                            <span class="badge badge-en-espera"> · En espera</span>
+                        }
+                        <p class="partido-meta">@item.Categoria @(item.Grupo != null ? $"· Grupo {item.Grupo}" : "") @(item.Jornada != null ? $"· Jornada {item.Jornada}" : "")</p>
+                        <p class="partido-nombres">@item.NombreA &nbsp;vs&nbsp; @item.NombreB</p>
+                    </div>
+                    @if (!esSoloLectura)
+                    {
+                        <div class="partido-acciones">
+                            @if (enCancha && !estaCapturando)
+                            {
+                                <button class="btn btn-primary" @onclick="() => AbrirCaptura(item)">Capturar</button>
+                                <button class="btn btn-ghost" @onclick="() => Posponer(item.Partido.Id)">Posponer</button>
+                            }
+                            @if (!enCancha)
+                            {
+                                <button class="btn btn-primary" @onclick="() => Activar(item.Partido.Id)">Activar</button>
+                            }
+                            @if (!estaCapturando)
+                            {
+                                <button class="btn btn-ghost" @onclick="() => MarcarDefault(item.Partido.Id, item.Partido.CompetidorAid, item.NombreA)" title="@item.NombreA gana por default">WO: @item.NombreA</button>
+                                <button class="btn btn-ghost" @onclick="() => MarcarDefault(item.Partido.Id, item.Partido.CompetidorBid, item.NombreB)" title="@item.NombreB gana por default">WO: @item.NombreB</button>
+                            }
+                        </div>
+                    }
+                </div>
+
+                @if (estaCapturando && !modoPuntoAPunto)
+                {
+                    @if (esArbitro)
+                    {
+                        <div style="margin:8px 0;">
+                            <button class="btn btn-ghost btn-mini" @onclick="() => IniciarPuntoAPunto(item)">Capturar punto por punto</button>
+                        </div>
+                    }
+                    <div class="captura-sets">
+                        <div class="captura-set">
+                            <label>Set 1</label>
+                            @item.NombreA: <input type="number" min="0" class="input-mini" @bind="s1a"  /><br />
+                            @item.NombreB: <input type="number" min="0" class="input-mini" @bind="s1b" />
+                        </div>
+                        @if (modalidadSets == "2 de 3 Sets")
+                        {
+                            <div class="captura-set">
+                                <label>Set 2</label>
+                                @item.NombreA: <input type="number" min="0" class="input-mini" @bind="s2a" /><br />
+                                @item.NombreB: <input type="number" min="0" class="input-mini" @bind="s2b" />
+                            </div>
+                            <div class="captura-set">
+                                <label>Set 3</label>
+                                @item.NombreA: <input type="number" min="0" class="input-mini" @bind="s3a" /><br />
+                                @item.NombreB: <input type="number" min="0" class="input-mini" @bind="s3b" />
+                            </div>
+                        }
+                    </div>
+                    <div style="margin-top: 10px;">
+                        <button class="btn btn-primary" @onclick="GuardarResultado">Guardar Resultado</button>
+                        <button class="btn btn-ghost" @onclick="CancelarCaptura">Cancelar</button>
+                    </div>
+                }
+                else if (estaCapturando && modoPuntoAPunto)
+                {
+                    <div class="captura-sets">
+                        <p class="nota">Set @numeroSetActual</p>
+
+                        @if (estadoSet != null && estadoSet.Puntos.Count == 0)
+                        {
+                            <div class="campo" style="max-width:280px;">
+                                <label>Saca</label>
+                                <select @bind="primerSirveElegido">
+                                    <option value="">-- Selecciona --</option>
+                                    @foreach (var ci in item.Partido.CompetidorA.CompetidorIntegrantes)
+                                    {
+                                        <option value="@ci.AtletaId">@ci.Atleta.Nombre (@item.NombreA)</option>
+                                    }
+                                    @foreach (var ci in item.Partido.CompetidorB.CompetidorIntegrantes)
+                                    {
+                                        <option value="@ci.AtletaId">@ci.Atleta.Nombre (@item.NombreB)</option>
+                                    }
+                                </select>
+                            </div>
+                            @if (item.Partido.CompetidorA.CompetidorIntegrantes.Count > 1)
+                            {
+                                <div class="campo" style="max-width:280px;">
+                                    <label>Recibe</label>
+                                    <select @bind="primerRecibeElegido">
+                                        <option value="">-- Selecciona --</option>
+                                        @foreach (var ci in item.Partido.CompetidorA.CompetidorIntegrantes)
+                                        {
+                                            <option value="@ci.AtletaId">@ci.Atleta.Nombre (@item.NombreA)</option>
+                                        }
+                                        @foreach (var ci in item.Partido.CompetidorB.CompetidorIntegrantes)
+                                        {
+                                            <option value="@ci.AtletaId">@ci.Atleta.Nombre (@item.NombreB)</option>
+                                        }
+                                    </select>
+                                </div>
+                            }
+                        }
+                        else if (estadoSet != null)
+                        {
+                            <p class="servicio-actual">Saca: @estadoSet.ProximoSirveNombre - Recibe: @estadoSet.ProximoRecibeNombre</p>
+                        }
+
+                        @if (estadoSet != null)
+                        {
+                            bool setGanado = estadoSet.Puntos.Count > 0 && CalendarioService.EsMarcadorValido(Math.Max(estadoSet.PuntosA, estadoSet.PuntosB), Math.Min(estadoSet.PuntosA, estadoSet.PuntosB), puntosJuego, puntosLimite);
+
+                            <h3 style="margin:10px 0;">@estadoSet.PuntosA - @estadoSet.PuntosB</h3>
+
+                            @if (!setGanado)
+                            {
+                                <button class="btn btn-primary" disabled="@procesandoPunto" @onclick='() => RegistrarPunto(item, "A")'>Punto @item.NombreA</button>
+                                <button class="btn btn-primary" disabled="@procesandoPunto" @onclick='() => RegistrarPunto(item, "B")'>Punto @item.NombreB</button>
+                                
+                                @if (estadoSet.Puntos.Count > 0)
+                                {
+                                    <button class="btn btn-ghost" @onclick="() => DeshacerPunto(item)">Deshacer último punto</button>
+                                }
+                            }
+
+                            @if (estadoSet.Puntos.Any())
+                            {
+                                <div class="grilla-puntos">
+                                    <div class="grilla-puntos-header">
+                                        <span>@item.NombreA</span>
+                                        <span>@item.NombreB</span>
+                                    </div>
+                                    @foreach (var p in estadoSet.Puntos.OrderByDescending(p => p.NumeroPunto))
+                                    {
+                                        <div class="grilla-puntos-fila">
+                                            <span class="grilla-punto-celda @(p.EquipoAnoto == "A" ? "anoto" : "")">@(p.EquipoAnoto == "A" ? p.PuntosA.ToString() : "")</span>
+                                            <span class="grilla-punto-celda @(p.EquipoAnoto == "B" ? "anoto" : "")">@(p.EquipoAnoto == "B" ? p.PuntosA.ToString() : "")</span>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                            else
+                            {
+                                <p class="mensaje-exito">Set ganado: @estadoSet.PuntosA-@estadoSet.PuntosB</p>
+                                <button class="btn btn-primary" @onclick="() => ConfirmarSetPuntoAPunto(item)">Confirmar y continuar</button>
+                                <button class="btn btn-ghost" @onclick="() => DeshacerPunto(item)">Deshacer último punto</button>
+                            }
+                        }
+                    </div>
+                    <div style="margin-top: 10px;">
+                        <button class="btn btn-ghost" @onclick="() => MarcarDefaultPuntoAPunto(item, item.Partido.CompetidorAid, item.NombreA)" title="@item.NombreA gana por default">WO: @item.NombreA</button>
+                        <button class="btn btn-ghost" @onclick="() => MarcarDefaultPuntoAPunto(item, item.Partido.CompetidorBid, item.NombreB)" title="@item.NombreB gana por default">WO: @item.NombreB</button>
+                    </div>
+                    <div style="margin-top: 10px;">
+                        <button class="btn btn-ghost" @onclick="CancelarPuntoAPunto">Cambiar a marcador final</button>
+                        <button class="btn btn-ghost" @onclick="CancelarCaptura">Cancelar captura</button>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+}
+
+@code {
+    private List<Categoria>? categorias;
+    private List<PartidoQueueItem>? cola;
+    private List<PartidoQueueItem>? pospuestos;
+    private string modalidadSets = "2 de 3 Sets";
+
+    private int puntosJuego = 21;
+    private int puntosLimite = 30;
+
+    private int? partidoCapturandoId;
+    private int s1a, s1b, s2a, s2b, s3a, s3b;
+    private bool esArbitro;
+
+    private bool modoPuntoAPunto;
+    private int numeroSetActual = 1;
+    private CalendarioService.EstadoSetPuntoAPunto? estadoSet;
+    private int? primerSirveElegido;
+    private int? primerRecibeElegido;
+    private bool procesandoPunto;
+
+    private string mensajeInfo = "";
+    private bool esExitoInfo = true;
+    private CancellationTokenSource? mensajeCts;
+
+    private string? errorDebug;
+    private bool esSoloLectura;
+    private string nombreUsuarioActual = "";
+
+    private List<PartidoQueueItem> ultimosCapturados = new();
+    private int? corrigiendoPartidoId;
+    private int s1aC, s1bC, s2aC, s2bC, s3aC, s3bC;
+    private string modalidadSetsCorr = "2 de 3 Sets";
+    private int puntosJuegoCorr = 21;
+    private int puntosLimiteCorr = 30;
+
+    private void MostrarMensaje(string msg, bool exito = true)
+    {
+        mensajeInfo = msg;
+        esExitoInfo = exito;
+
+        mensajeCts?.Cancel();
+        mensajeCts = new CancellationTokenSource();
+        var token = mensajeCts.Token;
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(4000, token);
+                await InvokeAsync(() =>
+                {
+                    if (!token.IsCancellationRequested)
+                    {
+                        mensajeInfo = "";
+                        StateHasChanged();
+                    }
+                });
+            }
+            catch (TaskCanceledException) { }
+        });
+    }
+
+    private class ProgresoJornadas
+    {
+        public int TotalJornadas { get; set; }
+        public int UltimaGenerada { get; set; }
+    }
+
+    private Dictionary<int, ProgresoJornadas> progresoJornadasPorCategoria = new();
+    private HashSet<int> categoriasConGruposGenerados = new();
+    private HashSet<int> categoriasConRoundRobinGenerado = new();
+    private Dictionary<int, int> conteoActivosEliminatoria = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (TorneoActual.TorneoId == null) return;
+
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            esSoloLectura = !authState.User.Identity!.IsAuthenticated;
+            esArbitro = authState.User.IsInRole("Arbitro");
+            nombreUsuarioActual = authState.User.Identity?.Name ?? "";
+
+            using var db = await DbFactory.CreateDbContextAsync();
+            var torneoId = TorneoActual.TorneoId!.Value;
+
+            categorias = await db.Categorias.Where(c => c.TorneoId == torneoId).ToListAsync();
+
+            await CargarProgresoJornadasAsync();
+
+            await Refrescar();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error al cargar Calendario para el torneo {TorneoId}", TorneoActual.TorneoId);
+            errorDebug = "Ocurrió un error al cargar esta página. Intenta recargar, o avisa al administrador si sigue pasando.";
+        }
+
+        EventBus.OnCambio += ManejarCambioExterno;
+    }
+
+    private async void ManejarCambioExterno()
+    {
+        await InvokeAsync(async () =>
+        {
+            await CargarProgresoJornadasAsync();
+            await Refrescar();
+            StateHasChanged();
+        });
+    }
+
+    public void Dispose()
+    {
+        EventBus.OnCambio -= ManejarCambioExterno;
+    }
+
+    private async Task Refrescar()
+    {
+        var torneoId = TorneoActual.TorneoId!.Value;
+        cola = await CalendarioSvc.ObtenerColaAsync(torneoId);
+        pospuestos = await CalendarioSvc.ObtenerPospuestosAsync(torneoId);
+        ultimosCapturados = await CalendarioSvc.ObtenerUltimosCapturadosAsync(torneoId);
+
+        if (categorias != null)
+        {
+            using var db = await DbFactory.CreateDbContextAsync();
+
+            var idsGrupos = categorias.Where(c => c.Formato == "GruposFaseFinal").Select(c => c.Id).ToList();
+            var generados = await db.Partidos
+                .Where(p => idsGrupos.Contains(p.CategoriaId) && p.Fase == "Grupos")
+                .Select(p => p.CategoriaId)
+                .Distinct()
+                .ToListAsync();
+            categoriasConGruposGenerados = generados.ToHashSet();
+
+            var idsRoundRobin = categorias.Where(c => c.Formato == "RoundRobin").Select(c => c.Id).ToList();
+            var generadosRR = await db.Partidos
+                .Where(p => idsRoundRobin.Contains(p.CategoriaId))
+                .Select(p => p.CategoriaId)
+                .Distinct()
+                .ToListAsync();
+            categoriasConRoundRobinGenerado = generadosRR.ToHashSet();
+
+            var idsElim = categorias.Where(c => c.Formato == "Eliminatoria").Select(c => c.Id).ToList();
+            conteoActivosEliminatoria = await db.Competidores
+                .Where(c => idsElim.Contains(c.CategoriaId) && c.Activo)
+                .GroupBy(c => c.CategoriaId)
+                .Select(g => new { g.Key, Count = g.Count() })
+                .ToDictionaryAsync(x => x.Key, x => x.Count);
+        }
+    }
+
+    private async Task GenerarRoundRobin(int categoriaId)
+    {
+        int n = await CalendarioSvc.GenerarRoundRobinAsync(categoriaId);
+        MostrarMensaje(n > 0 ? $"{n} partidos generados (todos contra todos)." : "No se pudo generar. Verifica que haya entre 2 y 6 atletas activos y que no existan ya partidos.", n > 0);
+        await Refrescar(); 
+    }
+
+    private async Task GenerarGrupos(int categoriaId)
+    {
+        int n = await CalendarioSvc.GenerarPartidosGrupoFaseAsync(categoriaId);
+        MostrarMensaje(n > 0 ? $" {n} partidos generados." : "Esta categoría ya tenía partidos generados (o le faltan grupos/atletas).", n > 0);
+        await Refrescar();
+    }
+
+    private async Task GenerarJornada(int categoriaId)
+    {
+        var (ok, msg, total) = await CalendarioSvc.GenerarSiguienteJornadaAsync(categoriaId);
+        MostrarMensaje(msg, ok);
+        await CargarProgresoJornadasAsync();
+        await Refrescar();
+    }
+
+    private async Task Posponer(int partidoId)
+    {
+        bool confirmado = await JS.InvokeAsync<bool>("confirm", $"¿Posponer este partido? Pasará a la lista de pospuestos.");
+        if (!confirmado) return;
+
+        await CalendarioSvc.PosponerPartidoAsync(partidoId, TorneoActual.TorneoId!.Value);
+        await Refrescar();
+    }
+
+    private async Task Reactivar(int partidoId)
+    {
+        await CalendarioSvc.ReactivarPartidoAsync(partidoId);
+        await Refrescar();
+    }
+
+    private async Task AbrirCaptura(PartidoQueueItem item)
+    {
+        partidoCapturandoId = item.Partido.Id;
+        modoPuntoAPunto = false;
+        numeroSetActual = 1;
+        estadoSet = null;
+        s1a = s1b = s2a = s2b = s3a = s3b = 0;
+
+        using var db = await DbFactory.CreateDbContextAsync();
+        var config = await db.Configuracions.FirstOrDefaultAsync(c => c.CategoriaId == item.Partido.CategoriaId);
+        modalidadSets = config?.ModalidadSets ?? "2 de 3 Sets";
+        puntosJuego = config?.PuntosJuego ?? 21;
+        puntosLimite = config?.PuntosLimite ?? 30;
+    }
+
+    private void CancelarCaptura()
+    {
+        partidoCapturandoId = null;
+        modoPuntoAPunto = false;
+    }
+
+    private async Task MarcarDefaultPuntoAPunto(PartidoQueueItem item, int ganadorId, string nombreGanador)
+    {
+        bool confirmado = await JS.InvokeAsync<bool>("confirm", $"¿Terminar el partido y marcar a {nombreGanador} como ganador por default?");
+        if (!confirmado) return;
+
+        var (ok, msg) = await CalendarioSvc.MarcarPorDefaultAsync(item.Partido.Id, ganadorId, nombreUsuarioActual);
+        MostrarMensaje(msg, ok);
+
+        if (ok)
+        {
+            partidoCapturandoId = null;
+            modoPuntoAPunto = false;
+        }
+
+        await Refrescar();
+    }
+
+    private async Task IniciarPuntoAPunto(PartidoQueueItem item)
+    {
+        modoPuntoAPunto = true;
+        numeroSetActual = 1;
+        s1a = s1b = s2a = s2b = s3a = s3b = 0;
+        primerSirveElegido = null;
+        primerRecibeElegido = null;
+        await CargarEstadoSet(item.Partido.Id);
+    }
+
+    private void CancelarPuntoAPunto()
+    {
+        modoPuntoAPunto = false;
+        estadoSet = null;
+    }
+
+    private async Task CargarEstadoSet(int partidoId)
+    {
+        estadoSet = await CalendarioSvc.ObtenerEstadoSetAsync(partidoId, numeroSetActual);
+    }
+
+    private async Task RegistrarPunto(PartidoQueueItem item, string equipo)
+    {
+        if (procesandoPunto) return;
+        procesandoPunto = true;
+
+        bool esPrimerPunto = estadoSet == null || estadoSet.Puntos.Count == 0;
+
+        if (esPrimerPunto && item.Partido.CompetidorA.CompetidorIntegrantes.Count == 1 && primerSirveElegido != null)
+        {
+            bool sirveEsA = item.Partido.CompetidorA.CompetidorIntegrantes.Any(ci => ci.AtletaId == primerSirveElegido);
+            primerRecibeElegido = sirveEsA
+                ? item.Partido.CompetidorB.CompetidorIntegrantes.First().AtletaId
+                : item.Partido.CompetidorA.CompetidorIntegrantes.First().AtletaId;
+        }
+
+        if (esPrimerPunto && (primerSirveElegido == null || primerRecibeElegido == null))
+        {
+            MostrarMensaje("Elige quién saca y quién recibe para iniciar el set.", false);
+            procesandoPunto = false;
+            return;
+        }
+
+        var (ok, msg) = await CalendarioSvc.RegistrarPuntoAsync(
+            item.Partido.Id, numeroSetActual, equipo, puntosJuego, puntosLimite,
+            esPrimerPunto ? primerSirveElegido : null,
+            esPrimerPunto ? primerRecibeElegido : null);
+
+        if (!ok) MostrarMensaje(msg, false);
+
+        await CargarEstadoSet(item.Partido.Id);
+        procesandoPunto = false;
+    }
+
+    private async Task DeshacerPunto(PartidoQueueItem item)
+    {
+        var (ok, msg) = await CalendarioSvc.DeshacerUltimoPuntoAsync(item.Partido.Id, numeroSetActual);
+        if (!ok) MostrarMensaje(msg, false);
+        await CargarEstadoSet(item.Partido.Id);
+    }
+
+    private async Task ConfirmarSetPuntoAPunto(PartidoQueueItem item)
+    {
+        if (estadoSet == null) return;
+
+        if (numeroSetActual == 1) { s1a = estadoSet.PuntosA; s1b = estadoSet.PuntosB; }
+        else if (numeroSetActual == 2) { s2a = estadoSet.PuntosA; s2b = estadoSet.PuntosB; }
+        else { s3a = estadoSet.PuntosA; s3b = estadoSet.PuntosB; }
+
+        int setsA = (s1a > s1b ? 1 : 0) + (s2a > s2b && (s2a > 0 || s2b > 0) ? 1 : 0) + (s3a > s3b && (s3a > 0 || s3b > 0) ? 1 : 0);
+        int setsB = (s1b > s1a ? 1 : 0) + (s2b > s2a && (s2a > 0 || s2b > 0) ? 1 : 0) + (s3b > s3a && (s3a > 0 || s3b > 0) ? 1 : 0);
+
+        bool partidoTerminado = modalidadSets == "1 Set" || setsA == 2 || setsB == 2;
+
+        if (partidoTerminado)
+        {
+            bool confirmado = await JS.InvokeAsync<bool>("confirm", $"¿Terminar el partido con este resultado? Sets ganados: {setsA}-{setsB}.");
+            if (!confirmado) return;
+
+            var (ok, msg) = await CalendarioSvc.CapturarResultadoAsync(item.Partido.Id, s1a, s1b, s2a, s2b, s3a, s3b, modalidadSets, puntosJuego, puntosLimite, nombreUsuarioActual);
+            MostrarMensaje (msg, ok);
+
+            if (ok)
+            {
+                partidoCapturandoId = null;
+                modoPuntoAPunto = false;
+                await Refrescar();
+            }
+        }
+        else
+        {
+            numeroSetActual++;
+            primerSirveElegido = null;
+            primerRecibeElegido = null;
+            await CargarEstadoSet(item.Partido.Id);
+        }
+    }
+
+    private async Task GuardarResultado()
+    {
+        if (partidoCapturandoId == null) return;
+
+        if (s1a == 0 && s1b == 0 && s2a == 0 && s2b == 0 && s3a == 0 && s3b == 0)
+        {
+            MostrarMensaje("No puedes guardar un resultado con todos los marcadores en 0.", false);
+            return;
+        }
+
+        var (ok, msg) = await CalendarioSvc.CapturarResultadoAsync(partidoCapturandoId.Value, s1a, s1b, s2a, s2b, s3a, s3b, modalidadSets, puntosJuego, puntosLimite, nombreUsuarioActual);
+        MostrarMensaje(msg, ok);
+
+        if (ok)
+        {
+            partidoCapturandoId = null;
+            await Refrescar();
+        }
+    }
+
+    private async Task Activar(int partidoId)
+    {
+        var (ok, msg) = await CalendarioSvc.ActivarPartidoAsync(partidoId, TorneoActual.TorneoId!.Value);
+        MostrarMensaje(msg, ok);
+        await Refrescar();
+    }
+
+    private async Task MarcarDefault(int partidoId, int ganadorId, string nombreGanador)
+    {
+        bool confirmado = await JS.InvokeAsync<bool>("confirm", $"¿Marcar a {nombreGanador} como ganador por default?");
+        if (!confirmado) return;
+
+        var (ok, msg) = await CalendarioSvc.MarcarPorDefaultAsync(partidoId, ganadorId, nombreUsuarioActual);
+        MostrarMensaje(msg, ok);
+        await Refrescar();
+    }
+
+    private async Task AbrirCorreccion(PartidoQueueItem item)
+    {
+        corrigiendoPartidoId = item.Partido.Id;
+
+        var sets = item.Partido.SetsPartidos.OrderBy(s => s.NumeroSet).ToList();
+        s1aC = sets.Count > 0 ? sets[0].PuntosA : 0;
+        s1bC = sets.Count > 0 ? sets[0].PuntosB : 0;
+        s2aC = sets.Count > 1 ? sets[1].PuntosA : 0;
+        s2bC = sets.Count > 1 ? sets[1].PuntosB : 0;
+        s3aC = sets.Count > 2 ? sets[2].PuntosA : 0;
+        s3bC = sets.Count > 2 ? sets[2].PuntosB : 0;
+
+        using var db = await DbFactory.CreateDbContextAsync();
+        var config = await db.Configuracions.FirstOrDefaultAsync(c => c.CategoriaId == item.Partido.CategoriaId);
+        modalidadSetsCorr = config?.ModalidadSets ?? "2 de 3 Sets";
+        puntosJuegoCorr = config?.PuntosJuego ?? 21;
+        puntosLimiteCorr = config?.PuntosLimite ?? 30;
+    }
+
+    private void CancelarCorreccion()
+    {
+        corrigiendoPartidoId = null;
+    }
+
+    private async Task GuardarCorreccion(int partidoId)
+    {
+        bool confirmado = await JS.InvokeAsync<bool>("confirm", "¿Corregir este resultado? Se recalculan las estadísticas del grupo/jornada");
+        if (!confirmado) return;
+
+        var (ok, msg) = await CalendarioSvc.CorregirResultadoAsync(
+            partidoId, s1aC, s1bC, s2aC, s2bC, s3aC, s3bC,
+            modalidadSetsCorr, puntosJuegoCorr, puntosLimiteCorr, nombreUsuarioActual);
+
+        MostrarMensaje(msg, ok);
+
+        if (ok)
+        {
+            corrigiendoPartidoId = null;
+            await Refrescar();
+        }
+    }
+
+    private async Task CargarProgresoJornadasAsync()
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        var idsJornadas = categorias!.Where(c => c.Formato == "Jornadas").Select(c => c.Id).ToList();
+
+        progresoJornadasPorCategoria.Clear();
+        foreach (var catId in idsJornadas)
+        {
+            int vueltas = (await db.Configuracions.FirstOrDefaultAsync(c => c.CategoriaId == catId))?.NumeroVueltas ?? 1;
+            int activos = await db.Competidores.CountAsync(c => c.CategoriaId == catId && c.Activo);
+            int totalJornadas = CalendarioService.CalcularTotalJornadas(activos, vueltas);
+            int ultimaGenerada = await db.Partidos
+                .Where(p => p.CategoriaId == catId && p.Fase == "Liga")
+                .Select(p => (int?)p.Jornada)
+                .MaxAsync() ?? 0;
+
+            progresoJornadasPorCategoria[catId] = new ProgresoJornadas { TotalJornadas = totalJornadas, UltimaGenerada = ultimaGenerada };
+        }
+    }
+}

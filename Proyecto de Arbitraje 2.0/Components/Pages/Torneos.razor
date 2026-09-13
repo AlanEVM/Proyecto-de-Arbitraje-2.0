@@ -1,0 +1,232 @@
+﻿@page "/torneos"
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using ProyectoArbitraje.Data
+@using ProyectoArbitraje.Models
+@using ProyectoArbitraje.Services
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<TorneoContext> DbFactory
+@inject TorneoActualService TorneoActual
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+@inject AuthenticationStateProvider AuthStateProvider
+
+<PageTitle>Gestión de Torneos</PageTitle>
+
+<div class="pagina">
+    <div class="tarjeta-marcador pagina-header">
+        <h1>Gestión de Torneos</h1>
+        <p class="pagina-subtitulo">Crea un torneo nuevo o elimina uno existente. Para entrar a un torneo, ve a Inicio.</p>
+    </div>
+
+    <div class="tarjeta">
+        <h2>Torneos existentes</h2>
+
+        @if (torneos == null)
+        {
+            <p class="vacio">Cargando...</p>
+        }
+        else if (!torneos.Any())
+        {
+            <p class="vacio">Aún no hay torneos creados.</p>
+        }
+        else
+        {
+            <table class="tabla-limpia">
+                <thead>
+                    <tr>
+                        <th>Nombre</th>
+                        <th>Fecha</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var t in torneos)
+                    {
+                        <tr>
+                            <td>@t.Nombre</td>
+                            <td>@t.Fecha.ToString("dd/MM/yyyy")</td>
+                            <td style="text-align:right;">
+                                <button class="btn btn-danger" @onclick="() => EliminarTorneo(t)">Eliminar</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+
+    <AuthorizeView Roles="Admin">
+        <Authorized>
+            <hr class="cancha-divider" />
+
+            <div class="tarjeta">
+                <h2>Crear Nuevo Torneo</h2>
+
+                <div class="campo" style="max-width:340px;">
+                    <label>Nombre del Torneo</label>
+                    <input @bind="nuevoNombre" placeholder="Ej. Torneo Invierno 2026" />
+                </div>
+                <div class="campo" style="max-width:200px;">
+                    <label>Fecha</label>
+                    <input type="date" @bind="nuevaFecha" />
+                </div>
+                <div class="campo" style="max-width:260px;">
+                    <label>Modalidad del torneo</label>
+                    <select @bind="nuevaModalidad">
+                        <option value="GruposFaseFinal">Grupos + Fase Final</option>
+                        <option value="Eliminatoria">Eliminatoria directa</option>
+                        <option value="Jornadas">Jornadas</option>
+                    </select>
+                    <p class="nota">Aplica a todas las categorías de este torneo.</p>
+                </div>
+
+                @if (!string.IsNullOrEmpty(mensajeError))
+                {
+                    <p class="mensaje-error">@mensajeError</p>
+                }
+
+                <div style="margin-top:16px;">
+                    <button class="btn btn-primary" @onclick="GuardarTorneo">
+                        Guardar Torneo
+                    </button>
+                </div>
+            </div>
+        </Authorized>
+    </AuthorizeView>
+</div>
+
+@code {
+    private List<Torneo>? torneos;
+
+    private string nuevoNombre = "";
+    private string nuevaModalidad = "GruposFaseFinal";
+    private DateOnly nuevaFecha = DateOnly.FromDateTime(DateTime.Today);
+
+    private string mensajeError = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarTorneos();
+    }
+
+    private async Task CargarTorneos()
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        torneos = await db.Torneos.OrderByDescending(t => t.Fecha).ToListAsync();
+    }
+
+    private async Task<string> ObtenerEstadoActualAsync(TorneoContext db, int torneoId)
+    {
+        var categoriaIds = await db.Categorias.Where(c => c.TorneoId == torneoId).Select(c => c.Id).ToListAsync();
+        if (!categoriaIds.Any()) return "Planeado";
+
+        int total = await db.Partidos.CountAsync(p => categoriaIds.Contains(p.CategoriaId));
+        if (total == 0) return "Planeado";
+
+        int jugados = await db.Partidos.CountAsync(p => categoriaIds.Contains(p.CategoriaId) && p.Estado == "Jugado");
+        return jugados == total ? "Jugado" : "Pendiente";
+    }
+
+    private async Task GuardarTorneo()
+    {
+        if (string.IsNullOrWhiteSpace(nuevoNombre))
+        {
+            mensajeError = "Ponle un nombre al torneo.";
+            return;
+        }
+
+        using var db = await DbFactory.CreateDbContextAsync();
+
+        var torneo = new Torneo
+        {
+            Nombre = nuevoNombre,
+            Fecha = nuevaFecha,
+            Estado = "Planeado",
+            Modalidad = nuevaModalidad
+        };
+        db.Torneos.Add(torneo);
+        await db.SaveChangesAsync();
+
+        for (int i = 1; i <= 4; i++)
+        {
+            db.Canchas.Add(new Cancha { TorneoId = torneo.Id, Numero = i });
+        }
+
+        await db.SaveChangesAsync();
+
+        nuevoNombre = "";
+        mensajeError = "";
+
+        await CargarTorneos();
+    }
+
+    private async Task EliminarTorneo(Torneo t)
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+
+        string estado = await ObtenerEstadoActualAsync(db, t.Id);
+        if (estado == "Jugado")
+        {
+            await JS.InvokeAsync<object>("alert", "Este torneo ya está finalizado (todos sus partidos jugados) y no se puede eliminar.");
+            return;
+        }
+
+        bool confirmado = await JS.InvokeAsync<bool>("confirm",
+            $"¿Seguro que quieres eliminar el torneo '{t.Nombre}'? Esto borra TODOS sus datos de forma permanente.");
+        if (!confirmado) return;
+
+        using var transaccion = await db.Database.BeginTransactionAsync();
+        try
+        {
+            var categoriaIds = await db.Categorias.Where(c => c.TorneoId == t.Id).Select(c => c.Id).ToListAsync();
+
+            var partidoIds = await db.Partidos.Where(p => categoriaIds.Contains(p.CategoriaId)).Select(p => p.Id).ToListAsync();
+            var setsABorrar = await db.SetsPartidos.Where(s => partidoIds.Contains(s.PartidoId)).ToListAsync();
+            db.SetsPartidos.RemoveRange(setsABorrar);
+
+            var partidosABorrar = await db.Partidos.Where(p => categoriaIds.Contains(p.CategoriaId)).ToListAsync();
+            db.Partidos.RemoveRange(partidosABorrar);
+
+            var competidorIds = await db.Competidores.Where(c => categoriaIds.Contains(c.CategoriaId)).Select(c => c.Id).ToListAsync();
+            var integrantesABorrar = await db.CompetidorIntegrantes.Where(ci => competidorIds.Contains(ci.CompetidorId)).ToListAsync();
+            db.CompetidorIntegrantes.RemoveRange(integrantesABorrar);
+
+            var competidoresABorrar = await db.Competidores.Where(c => categoriaIds.Contains(c.CategoriaId)).ToListAsync();
+            db.Competidores.RemoveRange(competidoresABorrar);
+
+            var rankingABorrar = await db.RankingHistorials.Where(r => r.TorneoId == t.Id).ToListAsync();
+            db.RankingHistorials.RemoveRange(rankingABorrar);
+
+            var gruposABorrar = await db.Grupos.Where(g => categoriaIds.Contains(g.CategoriaId)).ToListAsync();
+            db.Grupos.RemoveRange(gruposABorrar);
+
+            var categoriasABorrar = await db.Categorias.Where(c => c.TorneoId == t.Id).ToListAsync();
+            db.Categorias.RemoveRange(categoriasABorrar);
+
+            var canchasABorrar = await db.Canchas.Where(c => c.TorneoId == t.Id).ToListAsync();
+            db.Canchas.RemoveRange(canchasABorrar);
+
+            await db.SaveChangesAsync();
+
+            var torneoABorrar = await db.Torneos.FindAsync(t.Id);
+            if (torneoABorrar != null) db.Torneos.Remove(torneoABorrar);
+            await db.SaveChangesAsync();
+
+            await transaccion.CommitAsync();
+        }
+        catch
+        {
+            await transaccion.RollbackAsync();
+            await JS.InvokeAsync<object>("alert", "Ocurrió un error al eliminar el torneo. No se borró nada.");
+            return;
+        }
+
+        if (TorneoActual.TorneoId == t.Id)
+        {
+            TorneoActual.SalirDelTorneo();
+        }
+
+        await CargarTorneos();
+    }
+}

@@ -1,0 +1,109 @@
+﻿@page "/"
+@using ProyectoArbitraje.Data
+@using ProyectoArbitraje.Models
+@using ProyectoArbitraje.Services
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<TorneoContext> DbFactory
+@inject TorneoActualService TorneoActual
+@inject NavigationManager Nav
+@inject AuthenticationStateProvider AuthStateProvider
+
+<PageTitle>Inicio</PageTitle>
+
+<div class="pagina">
+    <div class="tarjeta-marcador pagina-header">
+        <h1>Gestión de Arbitraje</h1>
+        <p class="pagina-subtitulo">Sistema de control de torneos de bádminton: categorías, calendario, resultados y ranking.</p>
+    </div>
+
+    @if (torneos == null)
+    {
+        <p class="vacio">Cargando...</p>
+    }
+    else if (!torneos.Any())
+    {
+        <p class="vacio">Aún no hay torneos registrados.</p>
+    }
+    else
+    {
+        var grupos = torneos
+            .GroupBy(t => estados.GetValueOrDefault(t.Id, "Planeado"))
+            .OrderBy(g => g.Key switch { "Pendiente" => 0, "Planeado" => 1, _ => 2 });
+
+        @foreach (var grupo in grupos)
+        {
+            string tituloGrupo = grupo.Key switch
+            {
+                "Pendiente" => "En curso",
+                "Planeado" => "Próximos",
+                _ => "Finalizados"
+            };
+            string claseBadge = grupo.Key switch
+            {
+                "Jugado" => "badge-jugado",
+                "Pendiente" => "badge-pendiente",
+                _ => "badge-planeado"
+            };
+
+            <h2>@tituloGrupo</h2>
+            <div class="cat-grid">
+                @foreach (var t in grupo)
+                {
+                    <div class="cat-card">
+                        <div class="cat-card-header">
+                            <h3>@t.Nombre</h3>
+                            <span class="badge @claseBadge">@grupo.Key</span>
+                        </div>
+                        <p class="cat-meta">@t.Fecha.ToString("dd/MM/yyyy")</p>
+                        <button class="btn btn-primary" @onclick="() => Entrar(t)">Entrar</button>
+                    </div>
+                }
+            </div>
+        }
+    }
+</div>
+
+@code {
+    private List<Torneo>? torneos;
+    private Dictionary<int, string> estados = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        bool esVisitante = !authState.User.Identity!.IsAuthenticated;
+
+        torneos = await db.Torneos.OrderByDescending(t => t.Fecha).ToListAsync();
+
+        foreach (var t in torneos)
+        {
+            estados[t.Id] = await ObtenerEstadoActualAsync(db, t.Id);
+        }
+
+        if (esVisitante)
+        {
+            torneos = torneos.Where(t => estados[t.Id] == "Pendiente" || estados[t.Id] == "Planeado").ToList();
+        }
+    }
+
+    private async Task<string> ObtenerEstadoActualAsync(TorneoContext db, int torneoId)
+    {
+        var categoriaIds = await db.Categorias.Where(c => c.TorneoId == torneoId).Select(c => c.Id).ToListAsync();
+        if (!categoriaIds.Any()) return "Planeado";
+
+        int total = await db.Partidos.CountAsync(p => categoriaIds.Contains(p.CategoriaId));
+        if (total == 0) return "Planeado";
+
+        int jugados = await db.Partidos.CountAsync(p => categoriaIds.Contains(p.CategoriaId) && p.Estado == "Jugado");
+        return jugados == total ? "Jugado" : "Pendiente";
+    }
+
+    private async Task Entrar(Torneo t)
+    {
+        TorneoActual.EntrarATorneo(t.Id, t.Nombre);
+
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        Nav.NavigateTo(authState.User.IsInRole("Admin") ? "/torneo-dashboard" : "/calendario");
+    }
+}

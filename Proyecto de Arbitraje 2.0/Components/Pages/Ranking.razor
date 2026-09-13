@@ -1,0 +1,172 @@
+﻿@page "/ranking"
+@attribute [Authorize(Roles = "Admin")]
+@using Microsoft.AspNetCore.Authorization
+@using ProyectoArbitraje.Data
+@using ProyectoArbitraje.Models
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<TorneoContext> DbFactory
+
+<PageTitle>Ranking</PageTitle>
+
+<div class="pagina">
+    <div class="tarjeta-marcador pagina-header">
+        <h1>Consulta de Ranking</h1>
+    </div>
+
+    <div class="tarjeta">
+        <div class="campo" style="max-width:400px;">
+            <label>Buscar atleta</label>
+            <input @bind="textoBusqueda" @bind:event="oninput" @bind:after="Buscar" placeholder="Escribe un nombre..." />
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(textoBusqueda) && resultadosBusqueda != null)
+        {
+            @if (!resultadosBusqueda.Any())
+            {
+                <p class="vacio">Sin resultados.</p>
+            }
+            else
+            {
+                <div style="margin-top:10px;">
+                    @foreach (var a in resultadosBusqueda)
+                    {
+                        <div class="categoria-generar-row">
+                            <span class="categoria-generar-nombre">@a.Nombre <span class="nota">(@a.Municipio.Nombre)</span></span>
+                            <button class="btn btn-ghost" @onclick="() => SeleccionarAtleta(a.Id)">Ver ranking</button>
+                        </div>
+                    }
+                </div>
+            }
+        }
+    </div>
+
+    @if (atletaSeleccionado != null)
+    {
+        <div class="tarjeta-marcador">
+            <h2>@atletaSeleccionado.Nombre @(atletaSeleccionado.AnioNacimiento != null ? $"({atletaSeleccionado.AnioNacimiento})" : "")</h2>
+        </div>
+
+        <div class="tarjeta">
+            <h3>Ranking actual (por modalidad)</h3>
+            @if (rankingActual.Any())
+            {
+                <div class="stat-grid">
+                    @foreach (var r in rankingActual)
+                    {
+                        <div class="stat-card">
+                            <div class="stat-numero">@r.Puntos</div>
+                            <div class="stat-label">@r.Modalidad - @r.Rama</div>
+                            <p class="nota" style="margin-top:6px;">@r.Torneos torneo(s)</p>
+                        </div>
+                    }
+                </div>
+            }
+            else
+            {
+                <p class="vacio">Este atleta todavía no tiene ranking acumulado.</p>
+            }
+        </div>
+
+        <div class="tarjeta">
+            <h3>Historial completo</h3>
+            @if (historialCompleto.Any())
+            {
+                <table class="tabla-limpia">
+                    <thead>
+                        <tr><th>Torneo</th><th>Categoría</th><th>Posición</th><th>Puntos</th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var h in historialCompleto)
+                        {
+                            <tr>
+                                <td>@h.NombreTorneo</td>
+                                <td>@h.NombreCategoria</td>
+                                <td><span class="badge @ClaseBadgePosicion(h.Posicion)">@EtiquetaPosicion(h.Posicion)</span></td>
+                                <td>@h.Puntos</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+            else
+            {
+                <p class="vacio">Sin historial todavía.</p>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private string textoBusqueda = "";
+    private List<Atleta>? resultadosBusqueda;
+    private Atleta? atletaSeleccionado;
+
+    private List<(string Modalidad, string Rama, int Puntos, int Torneos)> rankingActual = new();
+    private List<(string NombreTorneo, string NombreCategoria, int Posicion, int Puntos)> historialCompleto = new();
+
+    private async Task Buscar()
+    {
+        if (string.IsNullOrWhiteSpace(textoBusqueda)) { resultadosBusqueda = null; return; }
+
+        using var db = await DbFactory.CreateDbContextAsync();
+        resultadosBusqueda = await db.Atletas
+            .Include(a => a.Municipio)
+            .Where(a => a.Nombre.Contains(textoBusqueda))
+            .Take(15)
+            .ToListAsync();
+    }
+
+    private async Task SeleccionarAtleta(int atletaId)
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+
+        atletaSeleccionado = await db.Atletas.FindAsync(atletaId);
+        rankingActual = await ObtenerRankingActualAsync(db, atletaId);
+
+        var historial = await db.RankingHistorials
+            .Where(r => r.AtletaId == atletaId)
+            .Include(r => r.Torneo)
+            .Include(r => r.Categoria)
+            .OrderByDescending(r => r.Torneo.Fecha)
+            .ToListAsync();
+
+        historialCompleto = historial.Select(h => (
+            h.Torneo.Nombre,
+            $"{h.Categoria.Nombre} · {h.Categoria.Modalidad} · {h.Categoria.Rama}",
+            h.Posicion,
+            h.Puntos
+        )).ToList();
+    }
+
+    private async Task<List<(string, string, int, int)>> ObtenerRankingActualAsync(TorneoContext db, int atletaId)
+    {
+        var resultado = new List<(string, string, int, int)>();
+        var conn = db.Database.GetDbConnection();
+        if (conn.State != System.Data.ConnectionState.Open) await conn.OpenAsync();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT Modalidad, Rama, PuntosTotales, TorneosJugados FROM RankingActual WHERE AtletaId=@a";
+        var p = cmd.CreateParameter(); p.ParameterName = "@a"; p.Value = atletaId; cmd.Parameters.Add(p);
+        using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            resultado.Add((reader.GetString(0), reader.GetString(1), reader.GetInt32(2), reader.GetInt32(3)));
+        }
+        return resultado;
+    }
+
+    private string EtiquetaPosicion(int pos) => pos switch
+    {
+        1 => "Campeón",
+        2 => "Subcampeón",
+        3 => "Semifinalista",
+        5 => "Cuartofinalista",
+        _ => pos.ToString()
+    };
+
+    private string ClaseBadgePosicion(int pos) => pos switch
+    {
+        1 => "badge-campeon",
+        2 => "badge-subcampeon",
+        _ => "badge-otro-puesto"
+    };
+}

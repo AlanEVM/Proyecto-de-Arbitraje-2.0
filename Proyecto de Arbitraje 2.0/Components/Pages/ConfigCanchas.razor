@@ -1,0 +1,224 @@
+﻿@page "/config-canchas"
+@using Microsoft.AspNetCore.Authorization
+@using ProyectoArbitraje.Data
+@using ProyectoArbitraje.Models
+@using ProyectoArbitraje.Services
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<TorneoContext> DbFactory
+@inject TorneoActualService TorneoActual
+@inject AuthenticationStateProvider AuthStateProvider
+
+<PageTitle>Canchas</PageTitle>
+
+@if (TorneoActual.TorneoId == null)
+{
+    <div class="pagina">
+        <p class="vacio">No hay un torneo activo. <a href="">Ve a Inicio</a> y entra a uno primero.</p>
+    </div>
+    return;
+}
+
+<div class="pagina">
+    <div class="tarjeta-marcador pagina-header">
+        <h1>Canchas del torneo</h1>
+        <p class="pagina-subtitulo">@TorneoActual.NombreTorneo</p>
+    </div>
+
+    <div class="tarjeta">
+        @if (canchas == null)
+        {
+            <p class="vacio">Cargando...</p>
+        }
+        else
+        {
+            <p>Canchas actuales: <strong>@canchas.Count</strong></p>
+
+            <div class="canchas-grid" style="margin:16px 0;">
+                @foreach (var c in canchas.OrderBy(c => c.Numero))
+                {
+                    var info = infoPorCancha.GetValueOrDefault(c.Id);
+                    bool ocupada = info != null;
+
+                    <div class="cancha-card">
+                        <div class="cancha-card-header">
+                            <span class="cancha-numero">Cancha @c.Numero</span>
+                            @if (ocupada)
+                            {
+                                <span class="badge badge-en-cancha">@info!.Categoria</span>
+                            }
+                            else
+                            {
+                                <span class="badge badge-en-espera">Libre</span>
+                            }
+                        </div>
+
+                        <div class="cancha-visual">
+                            <svg viewBox="0 0 400 200" xmlns="http://www.w3.org/2000/svg">
+                                <rect x="0" y="0" width="400" height="200" fill="var(--cancha)" />
+
+                                <rect x="4" y="4" width="392" height="192" fill="none" stroke="var(--linea)" stroke-width="3" />
+
+                                <line x1="20" y1="4" x2="20" y2="196" stroke="var(--linea)" stroke-width="2" />
+                                <line x1="380" y1="4" x2="380" y2="196" stroke="var(--linea)" stroke-width="2" />
+
+                                <line x1="4" y1="15" x2="396" y2="15" stroke="var(--linea)" stroke-width="2" />
+                                <line x1="4" y1="185" x2="396" y2="185" stroke="var(--linea)" stroke-width="2" />
+
+                                <line x1="140" y1="4" x2="140" y2="196" stroke="var(--linea)" stroke-width="2" />
+                                <line x1="260" y1="4" x2="260" y2="196" stroke="var(--linea)" stroke-width="2" />
+
+                                <line x1="4" y1="100" x2="140" y2="100" stroke="var(--linea)" stroke-width="2" />
+                                <line x1="260" y1="100" x2="396" y2="100" stroke="var(--linea)" stroke-width="2" />
+
+                                <line x1="200" y1="4" x2="200" y2="196" stroke="var(--linea)" stroke-width="3" stroke-dasharray="8 6" />
+                            </svg>
+                        </div>
+
+                        <div class="cancha-nombres-fila">
+                            <div class="cancha-nombre-lado">
+                                @if (ocupada)
+                                {
+                                    <strong>@info!.NombreA</strong>
+                                    <span>@info.MunicipioA</span>
+                                }
+                                else
+                                {
+                                    <span>—</span>
+                                }
+                            </div>
+                            <div class="cancha-nombre-lado">
+                                @if (ocupada)
+                                {
+                                    <strong>@info!.NombreB</strong>
+                                    <span>@info.MunicipioB</span>
+                                }
+                                else
+                                {
+                                    <span>—</span>
+                                }
+                            </div>
+                        </div>
+
+                        <div class="cancha-card-footer">
+                            @if (ocupada && info!.EsFaseFinal)
+                            {
+                                <span class="badge badge-formato-eliminatoria">@info.Fase</span>
+                            }
+                            else
+                            {
+                                <span></span>
+                            }
+
+                            @if (ocupada)
+                            {
+                                <span class="cancha-bloqueada">En uso — no se puede quitar</span>
+                            }
+                            else if (!esSoloLectura)
+                            {
+                                <button class="btn-chip-x" @onclick="() => QuitarCancha(c)" title="Quitar cancha">× Quitar</button>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+
+            @if (!esSoloLectura)
+            {
+                <button class="btn btn-primary" @onclick="AgregarCancha">Agregar Cancha</button>
+            }
+
+            @if (!string.IsNullOrEmpty(mensajeError))
+            {
+                <p class="mensaje-error">@mensajeError</p>
+            }
+        }
+    </div>
+</div>
+
+@code {
+    private List<Cancha>? canchas;
+    private Dictionary<int, CanchaInfo> infoPorCancha = new();
+    private string mensajeError = "";
+    private bool esSoloLectura;
+
+    private class CanchaInfo
+    {
+        public string Categoria { get; set; } = "";
+        public string NombreA { get; set; } = "";
+        public string MunicipioA { get; set; } = "";
+        public string NombreB { get; set; } = "";
+        public string MunicipioB { get; set; } = "";
+        public bool EsFaseFinal { get; set; }
+        public string Fase { get; set; } = "";
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        esSoloLectura = !authState.User.IsInRole("Admin");
+
+        await CargarCanchas();
+    }
+
+    private async Task CargarCanchas()
+    {
+        if (TorneoActual.TorneoId == null) return;
+
+        using var db = await DbFactory.CreateDbContextAsync();
+        var torneoId = TorneoActual.TorneoId!.Value;
+
+        canchas = await db.Canchas
+            .Where(c => c.TorneoId == torneoId)
+            .OrderBy(c => c.Numero)
+            .ToListAsync();
+
+        var partidosEnCancha = await db.Partidos
+            .Where(p => p.CanchaId != null && p.Estado == "EnCancha" && p.Categoria.TorneoId == torneoId)
+            .Include(p => p.CompetidorA).ThenInclude(c => c.CompetidorIntegrantes).ThenInclude(ci => ci.Atleta).ThenInclude(a => a.Municipio)
+            .Include(p => p.CompetidorB).ThenInclude(c => c.CompetidorIntegrantes).ThenInclude(ci => ci.Atleta).ThenInclude(a => a.Municipio)
+            .Include(p => p.Categoria)
+            .ToListAsync();
+
+        infoPorCancha = partidosEnCancha.ToDictionary(
+            p => p.CanchaId!.Value,
+            p => new CanchaInfo
+            {
+                Categoria = $"{p.Categoria.Nombre} · {p.Categoria.Modalidad} · {p.Categoria.Rama}",
+                NombreA = string.Join(" / ", p.CompetidorA.CompetidorIntegrantes.Select(ci => ci.Atleta.Nombre)),
+                MunicipioA = string.Join(" / ", p.CompetidorA.CompetidorIntegrantes.Select(ci => ci.Atleta.Municipio.Nombre).Distinct()),
+                NombreB = string.Join(" / ", p.CompetidorB.CompetidorIntegrantes.Select(ci => ci.Atleta.Nombre)),
+                MunicipioB = string.Join(" / ", p.CompetidorB.CompetidorIntegrantes.Select(ci => ci.Atleta.Municipio.Nombre).Distinct()),
+                EsFaseFinal = p.Fase != "Grupos" && p.Fase != "Liga",
+                Fase = p.Fase
+            });
+    }
+
+    private async Task AgregarCancha()
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        var lista = canchas ?? new List<Cancha>();
+        int siguienteNumero = (lista.Any() ? lista.Max(c => c.Numero) : 0) + 1;
+
+        db.Canchas.Add(new Cancha { TorneoId = TorneoActual.TorneoId!.Value, Numero = siguienteNumero });
+        await db.SaveChangesAsync();
+        await CargarCanchas();
+    }
+
+    private async Task QuitarCancha(Cancha cancha)
+    {
+        mensajeError = "";
+        using var db = await DbFactory.CreateDbContextAsync();
+
+        bool ocupada = await db.Partidos.AnyAsync(p => p.CanchaId == cancha.Id && p.Estado == "EnCancha");
+        if (ocupada)
+        {
+            mensajeError = $"La Cancha {cancha.Numero} tiene un partido en curso.";
+            return;
+        }
+
+        var c = await db.Canchas.FindAsync(cancha.Id);
+        if (c != null) db.Canchas.Remove(c);
+        await db.SaveChangesAsync();
+        await CargarCanchas();
+    }
+}
