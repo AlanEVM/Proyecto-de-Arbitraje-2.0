@@ -24,6 +24,22 @@
         <p class="pagina-subtitulo">@TorneoActual.NombreTorneo</p>
     </div>
 
+    @if (!esSoloLectura)
+    {
+        <div class="tarjeta" style="margin-bottom: 12px;">
+            @if (TorneoActual.CanchasConfirmadas)
+            {
+                <p class="mensaje-exito">Canchas confirmadas. Ya se pueden activar y capturar partidos.</p>
+                <button class="btn btn-ghost btn-mini" @onclick="DesconfirmarCanchas">Volver a configurar canchas</button>
+            }
+            else
+            {
+                <p class="mensaje-error">No se puede activar ni capturar ningún partido hasta confirmar las canchas disponibles.</p>
+                <button class="btn btn-primary" @onclick="ConfirmarCanchas">Confirmar @(canchas?.Count(c => c.Activa) ?? 0) canchas para hoy</button>
+            }
+        </div>
+    }
+
     <div class="tarjeta">
         @if (canchas == null)
         {
@@ -39,12 +55,16 @@
                     var info = infoPorCancha.GetValueOrDefault(c.Id);
                     bool ocupada = info != null;
 
-                    <div class="cancha-card">
+                    <div class="cancha-card @(c.Activa ? "" : "cancha-card-apagada")">
                         <div class="cancha-card-header">
                             <span class="cancha-numero">Cancha @c.Numero</span>
                             @if (ocupada)
                             {
                                 <span class="badge badge-en-cancha">@info!.Categoria</span>
+                            }
+                            else if (!c.Activa)
+                            {
+                                <span class="badge badge-planeado">Desactivada</span>
                             }
                             else
                             {
@@ -113,9 +133,16 @@
                             {
                                 <span class="cancha-bloqueada">En uso — no se puede quitar</span>
                             }
+                            else if (!c.Activa)
+                            {
+                                @if (!esSoloLectura)
+                                {
+                                    <button class="btn btn-ghost btn-mini" @onclick="() => ReactivarCancha(c)">Reactivar</button>
+                                }
+                            }
                             else if (!esSoloLectura)
                             {
-                                <button class="btn-chip-x" @onclick="() => QuitarCancha(c)" title="Quitar cancha">× Quitar</button>
+                                <button class="btn-chip-x" @onclick="() => DesactivarCancha(c)" title="Desactivar">Desactivar</button>
                             }
                         </div>
                     </div>
@@ -193,14 +220,64 @@
             });
     }
 
+    private async Task ConfirmarCanchas()
+    {
+        if (TorneoActual.TorneoId == null) return;
+        using var db = await DbFactory.CreateDbContextAsync();
+        var t = await db.Torneos.FindAsync(TorneoActual.TorneoId!.Value);
+        if (t != null)
+        {
+            t.CanchasConfirmadas = true;
+            await db.SaveChangesAsync();
+            TorneoActual.ActualizarCanchasConfirmadas(true);
+        }
+    }
+
+    private async Task DesconfirmarCanchas()
+    {
+        if (TorneoActual.TorneoId == null) return;
+        using var db = await DbFactory.CreateDbContextAsync();
+        var t = await db.Torneos.FindAsync(TorneoActual.TorneoId!.Value);
+        if (t != null)
+        {
+            t.CanchasConfirmadas = false;
+            await db.SaveChangesAsync();
+            TorneoActual.ActualizarCanchasConfirmadas(false);
+        }
+    }
+
     private async Task AgregarCancha()
     {
         using var db = await DbFactory.CreateDbContextAsync();
         var lista = canchas ?? new List<Cancha>();
         int siguienteNumero = (lista.Any() ? lista.Max(c => c.Numero) : 0) + 1;
 
-        db.Canchas.Add(new Cancha { TorneoId = TorneoActual.TorneoId!.Value, Numero = siguienteNumero });
+        db.Canchas.Add(new Cancha { TorneoId = TorneoActual.TorneoId!.Value, Numero = siguienteNumero, Activa = true });
         await db.SaveChangesAsync();
+        await CargarCanchas();
+    }
+
+    private async Task DesactivarCancha(Cancha cancha)
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        var c = await db.Canchas.FindAsync(cancha.Id);
+        if (c != null)
+        {
+            c.Activa = false;
+            await db.SaveChangesAsync();
+        }
+        await CargarCanchas();
+    }
+
+    private async Task ReactivarCancha(Cancha cancha)
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        var c = await db.Canchas.FindAsync(cancha.Id);
+        if (c != null)
+        {
+            c.Activa = true;
+            await db.SaveChangesAsync();
+        }
         await CargarCanchas();
     }
 
@@ -216,9 +293,21 @@
             return;
         }
 
+        var partidosConEstaCancha = await db.Partidos.Where(p => p.CanchaId == cancha.Id).ToListAsync();
+        foreach (var p in partidosConEstaCancha) p.CanchaId = null;
+
         var c = await db.Canchas.FindAsync(cancha.Id);
         if (c != null) db.Canchas.Remove(c);
-        await db.SaveChangesAsync();
+
+        try
+        {
+            await db.SaveChangesAsync();
+        }
+        catch (DbUpdateException)
+        {
+            mensajeError = $"No se pudo eliminar la Cancha {cancha.Numero}. Intenta de nuevo.";
+        }
+
         await CargarCanchas();
     }
 }

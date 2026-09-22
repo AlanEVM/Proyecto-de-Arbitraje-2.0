@@ -161,6 +161,17 @@
         var u = await db.Usuarios.FindAsync(id);
         if (u == null) return;
 
+        if (u.Activo && u.Rol == "Admin")
+        {
+            int otrosAdminsActivos = await db.Usuarios.CountAsync(x => x.Rol == "Admin" && x.Activo && x.Id != id);
+            if (otrosAdminsActivos == 0)
+            {
+                mensaje = "No puedes desactivar al último Admin activo.";
+                esExito = false;
+                return;
+            }
+        }
+
         u.Activo = !u.Activo;
         await db.SaveChangesAsync();
         await Cargar();

@@ -624,6 +624,11 @@ h1:focus {
     color: var(--cancha);
 }
 
+.badge-formato-roundrobin {
+    background: #F5DCDA;
+    color: var(--falta); 
+}
+
 .cat-card details {
     margin-top: 10px;
     font-size: 0.85rem;
@@ -1066,6 +1071,36 @@ h1:focus {
     flex-shrink: 0;
 }
 
+.bracket-titulo-equipo {
+    grid-row: 1;
+    grid-column: 1;
+    text-align: right;
+    font-family: 'Barlow Condensed', sans-serif;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--cancha);
+    font-weight: 700;
+    padding: 0 8px 14px 0;
+}
+
+.bracket-equipo-label {
+    grid-column: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-around;
+    align-items: flex-end;
+    text-align: right;
+    font-size: 0.72rem;
+    color: var(--sombra);
+    padding: 6px 8px 6px 0;
+}
+
+.bracket-equipo-inline {
+    font-size: 0.75em;
+    color: var(--sombra);
+    margin-left: 6px;
+}
+
 .bracket-marcador {
     font-weight: 700;
     font-size: 0.8rem;
@@ -1145,6 +1180,12 @@ h1:focus {
     border-radius: var(--radio);
     padding: 14px;
     box-shadow: var(--sombra-caja);
+}
+
+.cancha-card-apagada {
+    opacity: 0.5;
+    filter: grayscale(70%);
+    transition: opacity 0.15s ease, filter 0.15s ease;
 }
 
 .cancha-card-header {
@@ -1305,6 +1346,19 @@ h1:focus {
     .bracket-wrapper {
         overflow-x: auto;
     }
+
+    .pp-marcador {
+        gap: 10px;
+    }
+
+    .pp-nombre {
+        max-width: 110px;
+        font-size: 0.9rem;
+    }
+
+    .pp-centro {
+        padding-top: 38px;
+    }
 }
 
 /* =====================================================================
@@ -1385,7 +1439,7 @@ h1:focus {
     text-align: center;
 }
 
-grilla-puntos-fila {
+.grilla-puntos-fila {
     display: grid;
     grid-template-columns: 1fr 1fr;
     border-top: 1px solid var(--gris-borde);
@@ -1402,4 +1456,81 @@ grilla-puntos-fila {
     background: #FDF1DC;
     color: var(--cork-dark);
     font-weight: 700;
+}
+
+/* =====================================================================
+   PUNTO POR PUNTO: diseño de pagina
+   ===================================================================== */
+
+.pp.bracket-marcador {
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 24px;
+    margin: 20px 0;
+    flex-wrap: wrap;
+}
+
+.pp-marcador {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: clamp(10px, 4vw, 24px);
+    margin: 20px 0;
+    flex-wrap: nowrap;
+}
+
+.pp-lado {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    flex: 1 1 0;
+    min-width: 0;
+}
+
+.pp-caja {
+    width: 100px;
+    max-width: 160px;
+    aspect-ratio: 1 / 1;
+    border: 3px solid var(--cancha);
+    border-radius: 12px;
+    background: white;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: clamp(2rem, 14vw, 5rem);
+    font-weight: 700;
+    color: var(--cancha);
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+
+.pp-caja:active:not(:disabled) {
+    background: var(--cancha);
+    color: white;
+}
+
+.pp-caja:disabled {
+    opacity: 0.5;
+    cursor:not-allowed;
+}
+
+.pp-nombre {
+    font-weight: 700;
+    text-align: center;
+    max-width: 180px;
+}
+
+.pp-centro {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    padding-top: 55px;
+}
+
+.pp-vs {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: var(--sombra);
 }

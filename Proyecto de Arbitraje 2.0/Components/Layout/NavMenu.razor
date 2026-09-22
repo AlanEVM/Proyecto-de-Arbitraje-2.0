@@ -81,21 +81,21 @@
 
 @if (TorneoActual.TorneoId != null)
 {
-    <AuthorizeView Context="sesionSub">
-        <Authorized>
-            <div class="subbar">
-                <AuthorizeView Roles="Admin" Context="rolSubAdmin1">
-                    <Authorized>
-                        <NavLink class="topbar-link" href="torneo-dashboard">Panel</NavLink>
-                        <NavLink class="topbar-link" href="config-torneo">Categorías</NavLink>
-                        <NavLink class="topbar-link" href="registro">Registro</NavLink>
-                    </Authorized>
-                </AuthorizeView>
-                <NavLink class="topbar-link" href="atletas">Atletas</NavLink>
-                <NavLink class="topbar-link" href="calendario">Calendario</NavLink>
-                <NavLink class="topbar-link" href="fasefinal">Fase Final</NavLink>
+    <div class="subbar">
+        <AuthorizeView Roles="Admin" Context="rolSubAdmin1">
+            <Authorized>
+                <NavLink class="topbar-link" href="torneo-dashboard">Panel</NavLink>
+                <NavLink class="topbar-link" href="config-torneo">Categorías</NavLink>
+                <NavLink class="topbar-link" href="registro">Registro</NavLink>
+            </Authorized>
+        </AuthorizeView>
+        <NavLink class="topbar-link" href="atletas">Atletas</NavLink>
+        <NavLink class="topbar-link" href="calendario">Calendario</NavLink>
+        <NavLink class="topbar-link" href="fasefinal">Fase Final</NavLink>
+        <AuthorizeView Context="rolSubCanchas">
+            <Authorized>
                 <NavLink class="topbar-link" href="config-canchas">Canchas</NavLink>
-            </div>
-        </Authorized>
-    </AuthorizeView>
+            </Authorized>
+        </AuthorizeView>
+    </div>
 }

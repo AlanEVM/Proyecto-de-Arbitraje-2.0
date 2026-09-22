@@ -644,6 +644,9 @@ public class FaseFinalService
             int setsA = 0, setsB = 0;
             var setsJugados = new List<(int num, int pa, int pb)>();
 
+            if (modalidadSets == "2 de 3 Sets" && setsJugados.Count < 2)
+                return (false, "Faltan sets por capturar para terminar este partido");
+
             if (modalidadSets == "1 Set")
             {
                 if (s1a > s1b) setsA = 1; else if (s1b > s1a) setsB = 1;
@@ -883,9 +886,57 @@ public class FaseFinalService
         return (true, "Categoría cerrada. Se otorgaron puntos al podio.");
     }
 
+    public async Task<(bool ok, string mensaje)> CerrarCategoriaGrupoUnicoAsync(int categoriaId)
+    {
+        using var db = await _factory.CreateDbContextAsync();
+
+        var categoria = await db.Categorias.FindAsync(categoriaId);
+        if (categoria == null) return (false, "Categoría no encontrada.");
+        if (categoria.Formato != "GruposFaseFinal") return (false, "Esta opción es solo para categorías de formato Grupos + Fase Final.");
+
+        int numGrupos = await db.Grupos.CountAsync(g => g.CategoriaId == categoriaId);
+        if (numGrupos != 1) return (false, "Esta opción es solo para categorías con un único grupo.");
+
+        bool yaCerrada = await db.RankingHistorials.AnyAsync(r => r.CategoriaId == categoriaId);
+        if (yaCerrada) return (false, "Esta categoría ya fue cerrada.");
+
+        var partidos = await db.Partidos
+            .Where(p => p.CategoriaId == categoriaId && p.Fase == "Grupos")
+            .ToListAsync();
+
+        if (partidos.Count == 0 || partidos.Any(p => p.Estado != "Jugado"))
+            return (false, "Todavía hay partidos sin jugar en esta categoría.");
+
+        var competidores = await db.Competidores
+            .Where(c => c.CategoriaId == categoriaId)
+            .ToListAsync();
+
+        var ordenados = competidores
+            .OrderByDescending(c => c.Pg)
+            .ThenByDescending(c => c.Sg - c.Sp)
+            .ThenByDescending(c => c.Pf - c.Pc)
+            .ThenBy(c => c.OrdenDesempate ?? int.MaxValue)
+            .ToList();
+
+        var puntos = await db.TablaPuntosRankings.ToDictionaryAsync(t => t.Posicion, t => t.Puntos);
+
+        for (int i = 0; i < Math.Min(3, ordenados.Count); i++)
+        {
+            int posicion = i + 1;
+            if (puntos.TryGetValue(posicion, out int pts))
+                await RegistrarRankingAsync(db, categoria, ordenados[i].Id, posicion, pts);
+        }
+
+        return (true, "Categoría cerrada. Se otorgaron puntos al podio.");
+    }
+
     private async Task RegistrarRankingAsync(TorneoContext db, Categoria categoria, int competidorId, int posicion, int puntos)
     {
         var integrantes = await db.CompetidorIntegrantes.Where(ci => ci.CompetidorId == competidorId).ToListAsync();
+        if (integrantes.Count == 0) return;
+
+        int puntosPorAtleta = puntos / integrantes.Count;
+
         foreach (var integ in integrantes)
         {
             bool yaExiste = await db.RankingHistorials.AnyAsync(r =>
@@ -1005,14 +1056,14 @@ public class FaseFinalService
 
         var partidos = await db.Partidos
             .Where(p => p.CategoriaId == categoriaId && p.GrupoId == null && p.Fase != "Liga")
-            .Include(p => p.CompetidorA).ThenInclude(c => c.CompetidorIntegrantes).ThenInclude(ci => ci.Atleta)
-            .Include(p => p.CompetidorB).ThenInclude(c => c.CompetidorIntegrantes).ThenInclude(ci => ci.Atleta)
+            .Include(p => p.CompetidorA).ThenInclude(c => c.CompetidorIntegrantes).ThenInclude(ci => ci.Atleta).ThenInclude(a => a.Municipio)
+            .Include(p => p.CompetidorB).ThenInclude(c => c.CompetidorIntegrantes).ThenInclude(ci => ci.Atleta).ThenInclude(a => a.Municipio)
             .Include(p => p.SetsPartidos)
             .ToListAsync();
 
         var byes = await db.ByesFaseFinal
             .Where(b => b.CategoriaId == categoriaId)
-            .Include(b => b.Competidor).ThenInclude(c => c.CompetidorIntegrantes).ThenInclude(ci => ci.Atleta)
+            .Include(b => b.Competidor).ThenInclude(c => c.CompetidorIntegrantes).ThenInclude(ci => ci.Atleta).ThenInclude(a => a.Municipio)
             .ToListAsync();
 
         return partidos

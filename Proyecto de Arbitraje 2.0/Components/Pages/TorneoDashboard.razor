@@ -81,7 +81,7 @@
                         <div class="progreso-fill" style="width:@PorcentajeAncho(c.PartidosJugados, c.PartidosTotal)"></div>
                     </div>
 
-                    @if (c.Categoria.Formato == "Jornadas" && c.UltimosPartidos.Any())
+                    @if ((c.Categoria.Formato == "Jornadas" || c.Categoria.Formato == "RoundRobin") && c.UltimosPartidos.Any())
                     {
                         <details>
                             <summary>Últimos resultados</summary>
@@ -144,6 +144,7 @@
         "GruposFaseFinal" => "Grupos + Fase Final",
         "Eliminatoria" => "Eliminatoria directa",
         "Jornadas" => "Jornadas",
+        "RoundRobin" => "Todos contra todos",
         _ => formato
     };
 
@@ -169,6 +170,10 @@
                 return partidosFaseFinalReales > 0
                     ? partidosFaseFinalReales
                     : (totalActivos >= 2 ? totalActivos - 1 : 0);
+            case "RoundRobin":
+                return partidosRondaInicialReales > 0
+                    ? partidosRondaInicialReales
+                    : (totalActivos >= 2 ? totalActivos * (totalActivos - 1) / 2 : 0);
             case "Jornadas":
                 {
                     int vueltas = numeroVueltasConfigurado ?? 1;
@@ -199,6 +204,7 @@
         "GruposFaseFinal" => "badge-formato-grupos",
         "Eliminatoria" => "badge-formato-eliminatoria",
         "Jornadas" => "badge-formato-jornadas",
+        "RoundRobin" => "badge-formato-roundrobin",
         _ => "badge-planeado"
     };
 
@@ -213,10 +219,7 @@
         var categorias = await db.Categorias.Where(c => c.TorneoId == torneoId).ToListAsync();
         var categoriaIds = categorias.Select(c => c.Id).ToList();
 
-        partidosTotal = await db.Partidos.CountAsync(p => categoriaIds.Contains(p.CategoriaId));
         partidosJugadosTotal = await db.Partidos.CountAsync(p => categoriaIds.Contains(p.CategoriaId) && p.Estado == "Jugado");
-
-        estadoTorneo = partidosTotal == 0 ? "Planeado" : (partidosJugadosTotal == partidosTotal ? "Jugado" : "Pendiente");
 
         totalAtletas = await db.CompetidorIntegrantes
             .Where(ci => categoriaIds.Contains(ci.Competidor.CategoriaId))
@@ -256,7 +259,7 @@
             r.PartidosTotal = CalcularPartidosProyectados(cat, conteosPorGrupo, totalActivos, numVueltasCfg, partidosRondaInicialReales, partidosFaseFinalReales);
             r.PartidosJugados = await db.Partidos.CountAsync(p => p.CategoriaId == cat.Id && p.Estado == "Jugado");
 
-            if (cat.Formato == "Jornadas")
+            if (cat.Formato == "Jornadas" || cat.Formato == "RoundRobin")
             {
                 var ultimos = await db.Partidos
                     .Where(p => p.CategoriaId == cat.Id && p.Estado == "Jugado")
@@ -281,5 +284,6 @@
         }
 
         partidosTotal = resumenCategorias.Sum(r => r.PartidosTotal);
+        estadoTorneo = partidosTotal == 0 ? "Planeado" : (partidosJugadosTotal == partidosTotal ? "Jugado" : "Pendiente");
     }
 }

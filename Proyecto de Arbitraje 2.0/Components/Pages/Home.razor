@@ -101,7 +101,7 @@
 
     private async Task Entrar(Torneo t)
     {
-        TorneoActual.EntrarATorneo(t.Id, t.Nombre);
+        TorneoActual.EntrarATorneo(t.Id, t.Nombre, t.CanchasConfirmadas);
 
         var authState = await AuthStateProvider.GetAuthenticationStateAsync();
         Nav.NavigateTo(authState.User.IsInRole("Admin") ? "/torneo-dashboard" : "/calendario");

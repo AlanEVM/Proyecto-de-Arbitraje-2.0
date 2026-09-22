@@ -15,6 +15,8 @@ public partial class Torneo
 
     public string Modalidad { get; set; } = null!;
 
+    public bool CanchasConfirmadas { get; set; }
+
     public virtual ICollection<Cancha> Canchas { get; set; } = new List<Cancha>();
 
     public virtual ICollection<Categoria> Categoria { get; set; } = new List<Categoria>();

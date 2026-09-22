@@ -41,6 +41,10 @@ public partial class Partido
 
     public string? MarcadorAnterior { get; set; }
 
+    public string? CapturaEnVivoPor { get; set; }
+
+    public DateTime? CapturaEnVivoDesde { get; set; }
+
     public virtual Cancha? Cancha { get; set; }
 
     public virtual Categoria Categoria { get; set; } = null!;

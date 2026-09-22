@@ -1,0 +1,466 @@
+﻿@page "/fasefinal/punto-punto/{PartidoId:int}"
+@attribute [Authorize(Roles = "Arbitro")]
+@implements IAsyncDisposable
+@using Microsoft.AspNetCore.Authorization
+@using ProyectoArbitraje.Data
+@using ProyectoArbitraje.Models
+@using ProyectoArbitraje.Services
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<TorneoContext> DbFactory
+@inject FaseFinalService FaseFinalSvc
+@inject CalendarioService CalendarioSvc
+@inject IJSRuntime JS
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Navigation
+@inject TorneoActualService TorneoActual
+
+<PageTitle>Punto por punto</PageTitle>
+
+<div class="pagina">
+    @if (partido == null)
+    {
+        <div class="tarjeta">
+            <p class="vacio">No se encontró el partido.</p>
+            <button class="btn btn-ghost" @onclick="Salir">Volver</button>
+        </div>
+    }
+    else if (bloqueadoPor != null)
+    {
+        <div class="tarjeta">
+            <p class="mensaje-error">Este partido ya está siendo capturado por <strong>@bloqueadoPor</strong>.</p>
+            <button class="btn btn-ghost" @onclick="Salir">Volver</button>
+        </div>
+    }
+    else
+    {
+        <div class="tarjeta-marcador pagina-header">
+            <h1>@partido.Categoria.Nombre</h1>
+            <p class="nota">Set @numeroSetActual</p>
+        </div>
+
+        @if (!string.IsNullOrEmpty(mensaje))
+        {
+            <p class="@(esExito ? "mensaje-exito" : "mensaje-error")">@mensaje</p>
+        }
+
+        
+        var estado = EstadoActual;
+
+        @if (estado != null)
+        {
+            bool setGanado = estado.Puntos.Count > 0 && CalendarioService.EsMarcadorValido(
+                Math.Max(estado.PuntosA, estado.PuntosB), Math.Min(estado.PuntosA, estado.PuntosB), puntosJuego, puntosLimite);
+            bool? ganoA = GanoCompetidorAElSetAnterior();
+            bool puedeAnotar = estado.Puntos.Count > 0 || saqueConfirmado;
+
+            <div class="pp-marcador">
+                <div class="pp-lado">
+                    <button class="pp-caja" disabled="@(procesando || setGanado || !puedeAnotar)" @onclick='() => RegistrarPunto("A")'>@estado.PuntosA</button>
+                    <div class="pp-nombre">@nombreA</div>
+                    <button class="btn btn-ghost btn-mini" @onclick="() => MarcarDefault(partido.CompetidorAid, nombreA)">WO: @nombreA</button>
+                </div>
+
+                <div class="pp-centro">
+                    <span class="pp-vs">VS</span>
+                    @if (estado.Puntos.Count > 0)
+                    {
+                        <button class="btn btn-ghost btn-mini" @onclick="DeshacerPunto">Deshacer último punto</button>
+                    }
+                </div>
+
+                <div class="pp-lado">
+                    <button class="pp-caja" disabled="@(procesando || setGanado || !puedeAnotar)" @onclick='() => RegistrarPunto("B")'>@estado.PuntosB</button>
+                    <div class="pp-nombre">@nombreB</div>
+                    <button class="btn btn-ghost btn-mini" @onclick="() => MarcarDefault(partido.CompetidorBid, nombreA)">WO: @nombreB</button>
+                </div>
+            </div>
+
+            <div class="tarjeta">
+                @if (estado.Puntos.Count == 0)
+                {
+                    @if (numeroSetActual > 1 && partido.CompetidorA.CompetidorIntegrantes.Count == 1 && primerSirveElegido != null)
+                    {
+                        string nombreSaqueAuto = ganoA == true ? nombreA : nombreB;
+                        <p class="nota">Saca automáticamente <strong>@nombreSaqueAuto</strong>, por ganar el set anterior.</p>
+                    }
+                    else
+                    {
+                                                
+                                                
+                        bool esDoblesEsteSet = partido.CompetidorA.CompetidorIntegrantes.Count > 1;
+                        
+                        <div class="campo" style="max-width:260px;">
+                            <label>Saca@(numeroSetActual > 1 ? " (pareja que ganó el set anterior)" : "")</label>
+                            <select @bind="primerSirveElegido" disabled="@saqueConfirmado">
+                                <option value="">-- Selecciona --</option>
+                                @if (!esDoblesEsteSet)
+                                {
+                                    @foreach (var ci in OpcionesSaque())
+                                    {
+                                        <option value="@ci.AtletaId">@ci.Atleta.Nombre</option>
+                                    }
+                                }
+                                else
+                                {
+                                    @if (OpcionesSaque().Any(ci => ci.CompetidorId == partido.CompetidorAid))
+                                    {
+                                        <optgroup label="@nombreA">
+                                            @foreach (var ci in OpcionesSaque().Where(ci => ci.CompetidorId == partido.CompetidorAid))
+                                            {
+                                                <option value="@ci.AtletaId">@ci.Atleta.Nombre</option>
+                                            }
+                                        </optgroup>
+                                    }
+                                    @if (OpcionesSaque().Any(ci => ci.CompetidorId == partido.CompetidorBid))
+                                    {
+                                        <optgroup label="@nombreB">
+                                            @foreach (var ci in OpcionesSaque().Where(ci => ci.CompetidorId == partido.CompetidorBid))
+                                            {
+                                                <option value="@ci.AtletaId">@ci.Atleta.Nombre</option>
+                                            }
+                                        </optgroup>
+                                    }
+                                }
+                            </select>
+                        </div>
+
+                        @if (esDoblesEsteSet)
+                        {
+                            bool sirveEsA = partido.CompetidorA.CompetidorIntegrantes.Any(ci => ci.AtletaId == primerSirveElegido);
+                            string equipoReceptorNombre = primerSirveElegido == null ? "" : (sirveEsA ? nombreB : nombreA);
+
+                            <div class="campo" style="max-width:260px;">
+                                <label>Recibe</label>
+                                <select @bind="primerRecibeElegido" disabled="@(primerSirveElegido == null || saqueConfirmado)">
+                                    <option value="">-- Selecciona --</option>
+                                    @if (primerSirveElegido != null)
+                                    {
+                                        <optgroup label="@equipoReceptorNombre">
+                                            @foreach (var ci in OpcionesRecibe())
+                                            {
+                                                <option value="@ci.AtletaId">@ci.Atleta.Nombre</option>
+                                            }
+                                        </optgroup>
+                                    }
+                                </select>
+                            </div>
+                        }
+                    }
+
+                    @if (!saqueConfirmado)
+                    {
+                        <button class="btn btn-primary btn-mini" style="margin-top: 8px;" @onclick="ConfirmarSaque">Confirmar saque</button>
+                    }
+                    else
+                    {
+                        <p class="mensaje-exito">Saque confirmado - ya puedes iniciar el partido.</p>
+                    }
+                }
+                else
+                {
+                    <div class="servicio-actual">Saca @estado.ProximoSirveNombre - Recibe @estado.ProximoRecibeNombre</div>
+                }
+
+                @if (setGanado)
+                {
+                    <p class="mensaje-exito">Set ganado: @estado.PuntosA-@estado.PuntosB</p>
+                    <button class="btn btn-primary" @onclick="ConfirmarSet">@(EsUltimoSetPosible() ? "Confirmar resultado del partido" : "Confirmar y continuar")</button>
+                }
+            </div>
+
+            <div class="tarjeta">
+                <h2 style="margin-top:0;">Punto por punto</h2>
+                @for (int n = 1; n <= numeroSetActual; n++)
+                {
+                    int nLocal = n;
+                    var estadoDeEseSet = estadosPorSet.GetValueOrDefault(nLocal);
+                    @if (estadoDeEseSet != null && estadoDeEseSet.Puntos.Any())
+                    {
+                        <p class="nota" style="margin-bottom: 4px;">Set @nLocal</p>
+                        <div class="grilla-puntos">
+                            <div class="grilla-puntos-header">
+                                <span>@nombreA</span>
+                                <span>@nombreB</span>
+                            </div>
+                            @foreach (var p in estadoDeEseSet.Puntos.OrderByDescending(p => p.NumeroPunto))
+                            {
+                                <div class="grilla-puntos-fila">
+                                    <span class="grilla-punto-celda @(p.EquipoAnoto == "A" ? "anoto" : "")">@(p.EquipoAnoto == "A" ? p.PuntosA.ToString() : "")</span>
+                                    <span class="grilla-punto-celda @(p.EquipoAnoto == "B" ? "anoto" : "")">@(p.EquipoAnoto == "B" ? p.PuntosB.ToString() : "")</span>
+                                </div>
+                            }
+                        </div>
+                    }
+                }
+            </div>
+        }
+
+        <div class="tarjeta no-imprimir" style="margin-top: 10px;">
+            <button class="btn btn-ghost" @onclick="Salir">Salir de captura</button>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public int PartidoId { get; set; }
+
+    private Partido? partido;
+    private string nombreA = "";
+    private string nombreB = "";
+    private string modalidadSets = "2 de 3 Sets";
+    private int puntosJuego = 21;
+    private int puntosLimite = 30;
+    private string nombreUsuarioActual = "";
+
+    private int numeroSetActual = 1;
+    private int s1a, s1b, s2a, s2b, s3a, s3b;
+    private Dictionary<int, CalendarioService.EstadoSetPuntoAPunto> estadosPorSet = new();
+    private int? primerSirveElegido;
+    private int? primerRecibeElegido;
+    private bool saqueConfirmado;
+    private bool procesando;
+
+    private string mensaje = "";
+    private bool esExito;
+    private string? bloqueadoPor;
+    private bool tengoElCandado;
+
+    private CalendarioService.EstadoSetPuntoAPunto? EstadoActual => estadosPorSet.GetValueOrDefault(numeroSetActual);
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!TorneoActual.CanchasConfirmadas)
+        {
+            Navigation.NavigateTo("/config-canchas");
+            return;
+        }
+
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        nombreUsuarioActual = authState.User.Identity?.Name ?? "";
+
+        using var db = await DbFactory.CreateDbContextAsync();
+        partido = await db.Partidos
+            .Include(p => p.Categoria)
+            .Include(p => p.CompetidorA).ThenInclude(c => c.CompetidorIntegrantes).ThenInclude(ci => ci.Atleta)
+            .Include(p => p.CompetidorB).ThenInclude(c => c.CompetidorIntegrantes).ThenInclude(ci => ci.Atleta)
+            .FirstOrDefaultAsync(p => p.Id == PartidoId);
+
+        if (partido == null) return;
+
+        bool candadoLibre = partido.CapturaEnVivoPor == null
+            || partido.CapturaEnVivoPor == nombreUsuarioActual
+            || partido.CapturaEnVivoDesde == null
+            || partido.CapturaEnVivoDesde < DateTime.Now.AddMinutes(-10);
+
+        if (!candadoLibre)
+        {
+            bloqueadoPor = partido.CapturaEnVivoPor;
+            return;
+        }
+
+        partido.CapturaEnVivoPor = nombreUsuarioActual;
+        partido.CapturaEnVivoDesde = DateTime.Now;
+        await db.SaveChangesAsync();
+        tengoElCandado = true;
+
+        nombreA = string.Join(" / ", partido.CompetidorA.CompetidorIntegrantes.Select(ci => ci.Atleta.Nombre));
+        nombreB = string.Join(" / ", partido.CompetidorB.CompetidorIntegrantes.Select(ci => ci.Atleta.Nombre));
+
+        var config = await db.Configuracions.FirstOrDefaultAsync(c => c.CategoriaId == partido.CategoriaId);
+        modalidadSets = config?.ModalidadSetsFinal ?? config?.ModalidadSets ?? "2 de 3 Sets";
+        puntosJuego = config?.PuntosJuegoFinal ?? config?.PuntosJuego ?? 21;
+        puntosLimite = config?.PuntosLimiteFinal ?? config?.PuntosLimite ?? 30;
+
+        PrepararSaqueInicialSet();
+        await CargarEstadoSet();
+    }
+
+    private async Task LiberarCandadoAsync()
+    {
+        if (!tengoElCandado || partido == null) return;
+
+        using var db = await DbFactory.CreateDbContextAsync();
+        var p = await db.Partidos.FindAsync(partido.Id);
+        if (p != null && p.CapturaEnVivoPor == nombreUsuarioActual)
+        {
+            p.CapturaEnVivoPor = null;
+            p.CapturaEnVivoDesde = null;
+            await db.SaveChangesAsync();
+        }
+        tengoElCandado = false;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await LiberarCandadoAsync();
+    }
+
+    private bool EsUltimoSetPosible()
+    {
+        int setsA = (s1a > s1b ? 1 : 0) + (s2a > s2b && (s2a > 0 || s2b > 0) ? 1 : 0);
+        int setsB = (s1b > s1a ? 1 : 0) + (s2b > s2a && (s2a > 0 || s2b > 0) ? 1 : 0);
+        return modalidadSets == "1 Set" || setsA == 1 || setsB == 1 && numeroSetActual >= 2 || numeroSetActual >= 3;
+    }
+
+    private bool? GanoCompetidorAElSetAnterior()
+    {
+        if (numeroSetActual == 2) return s1a > s1b;
+        if (numeroSetActual == 3) return s2a > s2b;
+        return null;
+    }
+
+    private void PrepararSaqueInicialSet()
+    {
+        primerSirveElegido = null;
+        primerRecibeElegido = null;
+        saqueConfirmado = false;
+
+        bool? ganoA = GanoCompetidorAElSetAnterior();
+        if (ganoA == null || partido == null) return;
+
+        var equipoGanador = ganoA.Value ? partido.CompetidorA : partido.CompetidorB;
+
+        if (equipoGanador.CompetidorIntegrantes.Count == 1)
+        {
+            var equipoReceptor = ganoA.Value ? partido.CompetidorB : partido.CompetidorA;
+            primerSirveElegido = equipoGanador.CompetidorIntegrantes.First().AtletaId;
+            primerRecibeElegido = equipoReceptor.CompetidorIntegrantes.First().AtletaId;
+        }
+    }
+
+    private IEnumerable<CompetidorIntegrante> OpcionesSaque()
+    {
+        if (partido == null) return Enumerable.Empty<CompetidorIntegrante>();
+
+        bool? ganoA = GanoCompetidorAElSetAnterior();
+        if (ganoA == null)
+            return partido.CompetidorA.CompetidorIntegrantes.Concat(partido.CompetidorB.CompetidorIntegrantes);
+
+        return ganoA.Value ? partido.CompetidorA.CompetidorIntegrantes : partido.CompetidorB.CompetidorIntegrantes;
+    }
+
+    private IEnumerable<CompetidorIntegrante> OpcionesRecibe()
+    {
+        if (partido == null || primerSirveElegido == null) return Enumerable.Empty<CompetidorIntegrante>();
+
+        bool sirveEsA = partido.CompetidorA.CompetidorIntegrantes.Any(ci => ci.AtletaId == primerSirveElegido);
+        return sirveEsA ? partido.CompetidorB.CompetidorIntegrantes : partido.CompetidorA.CompetidorIntegrantes;
+    }
+
+    private void ConfirmarSaque()
+    {
+        if (partido != null && partido.CompetidorA.CompetidorIntegrantes.Count == 1 && primerSirveElegido != null)
+        {
+            bool sirveEsA = partido.CompetidorA.CompetidorIntegrantes.Any(ci => ci.AtletaId == primerSirveElegido);
+            primerRecibeElegido = sirveEsA
+                ? partido.CompetidorB.CompetidorIntegrantes.First().AtletaId
+                : partido.CompetidorA.CompetidorIntegrantes.First().AtletaId;
+        }
+
+        if (primerSirveElegido == null || primerRecibeElegido == null)
+        {
+            mensaje = "Elige quién saca y quién recibe antes de confirmar.";
+            esExito = false;
+            return;
+        }
+        saqueConfirmado = true;
+        mensaje = "";
+    }
+
+    private async Task CargarEstadoSet()
+    {
+        estadosPorSet[numeroSetActual] = await CalendarioSvc.ObtenerEstadoSetAsync(partido!.Id, numeroSetActual);
+    }
+
+    private async Task RegistrarPunto(string equipo)
+    {
+        if (procesando || partido == null) return;
+        procesando = true;
+
+        bool esPrimerPunto = EstadoActual == null || EstadoActual.Puntos.Count == 0;
+
+        if (esPrimerPunto && partido.CompetidorA.CompetidorIntegrantes.Count == 1 && primerSirveElegido != null)
+        {
+            bool sirveEsA = partido.CompetidorA.CompetidorIntegrantes.Any(ci => ci.AtletaId == primerSirveElegido);
+            primerRecibeElegido = sirveEsA
+                ? partido.CompetidorB.CompetidorIntegrantes.First().AtletaId
+                : partido.CompetidorA.CompetidorIntegrantes.First().AtletaId;
+        }
+
+        if (esPrimerPunto && (!saqueConfirmado || primerSirveElegido == null || primerRecibeElegido == null))
+        {
+            mensaje = "Confirma quién saca y quién recibe para iniciar el set.";
+            esExito = false;
+            procesando = false;
+            return;
+        }
+
+        var (ok, msg) = await CalendarioSvc.RegistrarPuntoAsync(
+            partido.Id, numeroSetActual, equipo, puntosJuego, puntosLimite,
+            esPrimerPunto ? primerSirveElegido : null,
+            esPrimerPunto ? primerRecibeElegido : null);
+
+        if (!ok) { mensaje = msg; esExito = false; }
+
+        await CargarEstadoSet();
+        procesando = false;
+    }
+
+    private async Task DeshacerPunto()
+    {
+        if (partido == null) return;
+        var (ok, msg) = await CalendarioSvc.DeshacerUltimoPuntoAsync(partido.Id, numeroSetActual);
+        if (!ok) { mensaje = msg; esExito = false; }
+        await CargarEstadoSet();
+    }
+
+    private async Task ConfirmarSet()
+    {
+        var estado = EstadoActual;
+        if (estado == null || partido == null) return;
+
+        if (numeroSetActual == 1) { s1a = estado.PuntosA; s1b = estado.PuntosB; }
+        else if (numeroSetActual == 2) { s2a = estado.PuntosA; s2b = estado.PuntosB; }
+        else { s3a = estado.PuntosA; s3b = estado.PuntosB; }
+
+        int setsA = (s1a > s1b ? 1 : 0) + (s2a > s2b && (s2a > 0 || s2b > 0) ? 1 : 0) + (s3a > s3b && (s3a > 0 || s3b > 0) ? 1 : 0);
+        int setsB = (s1b > s1a ? 1 : 0) + (s2b > s2a && (s2a > 0 || s2b > 0) ? 1 : 0) + (s3b > s3a && (s3a > 0 || s3b > 0) ? 1 : 0);
+
+        bool partidoTerminado = modalidadSets == "1 Set" || setsA == 2 || setsB == 2;
+
+        if (partidoTerminado)
+        {
+            bool confirmado = await JS.InvokeAsync<bool>("confirm", $"¿Terminar el partido con este resultado? Sets ganados: {setsA}-{setsB}.");
+            if (!confirmado) return;
+
+            var (ok, msg) = await FaseFinalSvc.CapturarResultadoBracketAsync(partido.Id, s1a, s1b, s2a, s2b, s3a, s3b, modalidadSets, puntosJuego, puntosLimite, nombreUsuarioActual);
+            mensaje = msg; esExito = ok;
+
+            if (ok) await Salir();
+        }
+        else
+        {
+            numeroSetActual++;
+            PrepararSaqueInicialSet();
+            await CargarEstadoSet();
+        }
+    }
+
+    private async Task MarcarDefault(int ganadorId, string nombreGanador)
+    {
+        if (partido == null) return;
+        bool confirmado = await JS.InvokeAsync<bool>("confirm", $"¿Terminar el partido y marcar a {nombreGanador} como ganador por default? Se pierde el punto por punto que llevaba este set.");
+        if (!confirmado) return;
+
+        var (ok, msg) = await CalendarioSvc.MarcarPorDefaultAsync(partido.Id, ganadorId, nombreUsuarioActual);
+        mensaje = msg; esExito = ok;
+
+        if (ok) await Salir();
+    }
+
+    private async Task Salir()
+    {
+        await LiberarCandadoAsync();
+        Navigation.NavigateTo(partido != null ? $"/fasefinal?categoriaId={partido.CategoriaId}" : "/fasefinal");
+    }
+}

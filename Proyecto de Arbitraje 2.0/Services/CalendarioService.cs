@@ -76,7 +76,7 @@ public class CalendarioService
         if (yaExisten) return 0;
 
         var ids = await db.Competidores.Where(c => c.CategoriaId == categoriaId && c.Activo).Select(c => c.Id).ToListAsync();
-        if (ids.Count < 2 || ids.Count > 6) return 0;
+        if (ids.Count < 2 || ids.Count > 7) return 0;
 
         using var transaccion = await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
         int generados;
@@ -438,7 +438,7 @@ public class CalendarioService
     {
         using var db = await _factory.CreateDbContextAsync();
 
-        var canchas = await db.Canchas.Where(c => c.TorneoId == torneoId).ToListAsync();
+        var canchas = await db.Canchas.Where(c => c.TorneoId == torneoId && c.Activa).ToListAsync();
         var categoriaIds = await db.Categorias.Where(c => c.TorneoId == torneoId).Select(c => c.Id).ToListAsync();
 
         var enCancha = await db.Partidos
@@ -787,7 +787,7 @@ public class CalendarioService
         if (partido == null) return (false, "Partido no encontrado.");
         if (partido.Estado != "Pendiente") return (false, "El partido no está pendiente.");
 
-        var canchas = await db.Canchas.Where(c => c.TorneoId == torneoId).ToListAsync();
+        var canchas = await db.Canchas.Where(c => c.TorneoId == torneoId && c.Activa).ToListAsync();
         var categoriaIds = await db.Categorias.Where(c => c.TorneoId == torneoId).Select(c => c.Id).ToListAsync();
 
         var enCancha = await db.Partidos

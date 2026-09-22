@@ -11,6 +11,8 @@ public partial class Cancha
 
     public int Numero { get; set; }
 
+    public bool Activa { get; set; }
+
     public virtual ICollection<Partido> Partidos { get; set; } = new List<Partido>();
 
     public virtual Torneo Torneo { get; set; } = null!;

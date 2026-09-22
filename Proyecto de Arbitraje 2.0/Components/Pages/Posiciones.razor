@@ -96,6 +96,11 @@
                         </div>
                     }
                 </div>
+
+                @if (tablasPorGrupo.Count == 1 && grupoTerminado.Values.All(t => t) && (podioGeneral == null || !podioGeneral.Any()) && !esSoloLectura)
+                {
+                    <button class="btn btn-primary" style="margin-top:12px;" @onclick="CerrarCategoriaGrupoUnico">Cerrar categoría</button>
+                }
             }
         }
         else if (categoriaActiva.Formato == "Jornadas")
@@ -649,6 +654,26 @@
         if (!confirmado) return;
 
         var (ok, msg) = await FaseFinalSvc.CerrarCategoriaRoundRobinAsync(categoriaActiva.Id);
+
+        if (ok)
+        {
+            await CargarPosiciones();
+        }
+        else
+        {
+            await JS.InvokeVoidAsync("alert", msg);
+        }
+    }
+
+    private async Task CerrarCategoriaGrupoUnico()
+    {
+        if (categoriaActiva == null) return;
+
+        bool confirmado = await JS.InvokeAsync<bool>("confirm",
+            "¿Cerrar esta categoría? Se otorgan los puntos del ranking según la tabla actual. No se puede deshacer.");
+        if (!confirmado) return;
+
+        var (ok, msg) = await FaseFinalSvc.CerrarCategoriaGrupoUnicoAsync(categoriaActiva.Id);
 
         if (ok)
         {

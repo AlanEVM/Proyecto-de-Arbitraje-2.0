@@ -49,6 +49,7 @@
                         {
                             "GruposFaseFinal" => "badge-formato-grupos",
                             "Jornadas" => "badge-formato-jornadas",
+                            "RoundRobin" => "badge-formato-roundrobin",
                             _ => "badge-formato-eliminatoria"
                         };
 
@@ -99,7 +100,7 @@
                             else
                             {
                                 int activosElim = conteoActivosEliminatoria.GetValueOrDefault(c.Id);
-                                @if (activosElim >= 2 && activosElim <= 6)
+                                @if (activosElim >= 2 && activosElim <= 7)
                                 {
                                     <button class="btn btn-primary" @onclick="() => GenerarRoundRobin(c.Id)">Generar partidos (todos contra todos, @activosElim inscritos)</button>
                                 }
@@ -229,7 +230,11 @@ else
                         <p class="partido-meta">@item.Categoria @(item.Grupo != null ? $"· Grupo {item.Grupo}" : "") @(item.Jornada != null ? $"· Jornada {item.Jornada}" : "")</p>
                         <p class="partido-nombres">@item.NombreA &nbsp;vs&nbsp; @item.NombreB</p>
                     </div>
-                    @if (!esSoloLectura)
+                    @if (!esSoloLectura && !TorneoActual.CanchasConfirmadas)
+                    {
+                        <p class="mensaje-error">Confirma las canchas en la página "Canchas" para poder actuar sobre este partido.</p>
+                    }
+                    else if (!esSoloLectura)
                     {
                         <div class="partido-acciones">
                             @if (enCancha && !estaCapturando)
@@ -538,7 +543,7 @@ else
     private async Task GenerarRoundRobin(int categoriaId)
     {
         int n = await CalendarioSvc.GenerarRoundRobinAsync(categoriaId);
-        MostrarMensaje(n > 0 ? $"{n} partidos generados (todos contra todos)." : "No se pudo generar. Verifica que haya entre 2 y 6 atletas activos y que no existan ya partidos.", n > 0);
+        MostrarMensaje(n > 0 ? $"{n} partidos generados (todos contra todos)." : "No se pudo generar. Verifica que haya entre 2 y 7 atletas activos y que no existan ya partidos.", n > 0);
         await Refrescar(); 
     }
 

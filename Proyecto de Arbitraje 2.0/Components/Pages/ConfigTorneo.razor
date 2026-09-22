@@ -109,9 +109,9 @@
 
                                         <div class="campo" style="max-width:220px; margin-bottom:0;">
                                             <label>Rango de edad</label>
-                                            <select @bind="editConfigEdadRestringida">
-                                                <option value="False">Cualquier edad</option>
-                                                <option value="True">Rango de años de nacimiento</option>
+                                            <select value="@(editConfigEdadRestringida ? "si" : "no")" @onchange="OnCambioEdadRestringida">
+                                                <option value="no">Cualquier edad</option>
+                                                <option value="si">Rango de años de nacimiento</option>
                                             </select>
                                         </div>
 
@@ -336,7 +336,7 @@
 
         await db.SaveChangesAsync();
 
-        TorneoActual.EntrarATorneo(torneo.Id, torneo.Nombre);
+        TorneoActual.EntrarATorneo(torneo.Id, torneo.Nombre, torneo.CanchasConfirmadas);
         mensaje = "Cambios guardados.";
         esExito = true;
     }
@@ -463,6 +463,11 @@
         {
             nuevaCatRama = "Varonil";
         }
+    }
+
+    private void OnCambioEdadRestringida(ChangeEventArgs e)
+    {
+        editConfigEdadRestringida = (string?)e.Value == "si";
     }
 
     private void AbrirEdicionConfig(Categoria categoria)

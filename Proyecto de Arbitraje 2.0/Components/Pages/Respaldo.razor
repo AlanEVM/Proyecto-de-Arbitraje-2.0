@@ -159,7 +159,7 @@
         try
         {
             string nombreSeguro = Path.GetFileName(archivoSeleccionado);
-            string rutaCompleta = Path.Combine(carpetaDestino, archivoSeleccionado);
+            string rutaCompleta = Path.Combine(carpetaDestino, nombreSeguro);
 
             var builder = new SqlConnectionStringBuilder(Config.GetConnectionString("TorneoBadminton"));
             builder.InitialCatalog = "master";

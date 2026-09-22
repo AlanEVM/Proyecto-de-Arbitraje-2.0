@@ -80,6 +80,11 @@
                     </select>
                     <p class="nota">Aplica a todas las categorías de este torneo.</p>
                 </div>
+                <div class="campo" style="max-width:200px">
+                    <label>Canchas disponibles</label>
+                    <input type="number" min="1" max="20" @bind="nuevaCantidadCanchas" />
+                    <p class="nota">Puedes agregar, desactivar o reactivar canchas después en la página de "Canchas".</p>
+                </div>
 
                 @if (!string.IsNullOrEmpty(mensajeError))
                 {
@@ -102,6 +107,7 @@
     private string nuevoNombre = "";
     private string nuevaModalidad = "GruposFaseFinal";
     private DateOnly nuevaFecha = DateOnly.FromDateTime(DateTime.Today);
+    private int nuevaCantidadCanchas = 4;
 
     private string mensajeError = "";
 
@@ -148,14 +154,16 @@
         db.Torneos.Add(torneo);
         await db.SaveChangesAsync();
 
-        for (int i = 1; i <= 4; i++)
+        int cantidadCanchas = Math.Max(1, nuevaCantidadCanchas);
+        for (int i = 1; i <= cantidadCanchas; i++)
         {
-            db.Canchas.Add(new Cancha { TorneoId = torneo.Id, Numero = i });
+            db.Canchas.Add(new Cancha { TorneoId = torneo.Id, Numero = i, Activa = true });
         }
 
         await db.SaveChangesAsync();
 
         nuevoNombre = "";
+        nuevaCantidadCanchas = 4;
         mensajeError = "";
 
         await CargarTorneos();
