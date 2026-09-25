@@ -12,6 +12,7 @@
 @inject TorneoEventBus EventBus
 @inject ILogger<Calendario> Logger
 @inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Navigation
 
 <PageTitle>Calendario</PageTitle>
 
@@ -213,173 +214,92 @@ else
             bool enCancha = item.Partido.Estado == "EnCancha";
             bool estaCapturando = partidoCapturandoId == item.Partido.Id;
 
-            <div class="partido-card @(enCancha ? "en-cancha" : "")">
-                <div class="partido-card-top">
-                    <div>
-                        <strong>#@i</strong>
-                        @if (enCancha)
-                        {
-                            <span class="badge badge-en-cancha"> · Cancha @item.CanchaNumero</span>
-                        }
-                        else
-                        {
-                            <span class="badge badge-en-espera"> · En espera</span>
-                        }
-                        <p class="partido-meta">@item.Categoria @(item.Grupo != null ? $"· Grupo {item.Grupo}" : "") @(item.Jornada != null ? $"· Jornada {item.Jornada}" : "")</p>
-                        <p class="partido-nombres">@item.NombreA &nbsp;vs&nbsp; @item.NombreB</p>
-                    </div>
-                    @if (!esSoloLectura && !TorneoActual.CanchasConfirmadas)
-                    {
-                        <p class="mensaje-error">Confirma las canchas en la página "Canchas" para poder actuar sobre este partido.</p>
-                    }
-                    else if (!esSoloLectura)
-                    {
-                        <div class="partido-acciones">
-                            @if (enCancha && !estaCapturando)
+                <div class="partido-card @(enCancha ? "en-cancha" : "")">
+                    <div class="partido-card-top">
+                        <div>
+                            <strong>#@i</strong>
+                            @if (enCancha)
                             {
-                                <button class="btn btn-primary" @onclick="() => AbrirCaptura(item)">Capturar</button>
-                                <button class="btn btn-ghost" @onclick="() => Posponer(item.Partido.Id)">Posponer</button>
-                            }
-                            @if (!enCancha)
-                            {
-                                <button class="btn btn-primary" @onclick="() => Activar(item.Partido.Id)">Activar</button>
-                            }
-                            @if (!estaCapturando)
-                            {
-                                <button class="btn btn-ghost" @onclick="() => MarcarDefault(item.Partido.Id, item.Partido.CompetidorAid, item.NombreA)" title="@item.NombreA gana por default">WO: @item.NombreA</button>
-                                <button class="btn btn-ghost" @onclick="() => MarcarDefault(item.Partido.Id, item.Partido.CompetidorBid, item.NombreB)" title="@item.NombreB gana por default">WO: @item.NombreB</button>
-                            }
-                        </div>
-                    }
-                </div>
-
-                @if (estaCapturando && !modoPuntoAPunto)
-                {
-                    @if (esArbitro)
-                    {
-                        <div style="margin:8px 0;">
-                            <button class="btn btn-ghost btn-mini" @onclick="() => IniciarPuntoAPunto(item)">Capturar punto por punto</button>
-                        </div>
-                    }
-                    <div class="captura-sets">
-                        <div class="captura-set">
-                            <label>Set 1</label>
-                            @item.NombreA: <input type="number" min="0" class="input-mini" @bind="s1a"  /><br />
-                            @item.NombreB: <input type="number" min="0" class="input-mini" @bind="s1b" />
-                        </div>
-                        @if (modalidadSets == "2 de 3 Sets")
-                        {
-                            <div class="captura-set">
-                                <label>Set 2</label>
-                                @item.NombreA: <input type="number" min="0" class="input-mini" @bind="s2a" /><br />
-                                @item.NombreB: <input type="number" min="0" class="input-mini" @bind="s2b" />
-                            </div>
-                            <div class="captura-set">
-                                <label>Set 3</label>
-                                @item.NombreA: <input type="number" min="0" class="input-mini" @bind="s3a" /><br />
-                                @item.NombreB: <input type="number" min="0" class="input-mini" @bind="s3b" />
-                            </div>
-                        }
-                    </div>
-                    <div style="margin-top: 10px;">
-                        <button class="btn btn-primary" @onclick="GuardarResultado">Guardar Resultado</button>
-                        <button class="btn btn-ghost" @onclick="CancelarCaptura">Cancelar</button>
-                    </div>
-                }
-                else if (estaCapturando && modoPuntoAPunto)
-                {
-                    <div class="captura-sets">
-                        <p class="nota">Set @numeroSetActual</p>
-
-                        @if (estadoSet != null && estadoSet.Puntos.Count == 0)
-                        {
-                            <div class="campo" style="max-width:280px;">
-                                <label>Saca</label>
-                                <select @bind="primerSirveElegido">
-                                    <option value="">-- Selecciona --</option>
-                                    @foreach (var ci in item.Partido.CompetidorA.CompetidorIntegrantes)
-                                    {
-                                        <option value="@ci.AtletaId">@ci.Atleta.Nombre (@item.NombreA)</option>
-                                    }
-                                    @foreach (var ci in item.Partido.CompetidorB.CompetidorIntegrantes)
-                                    {
-                                        <option value="@ci.AtletaId">@ci.Atleta.Nombre (@item.NombreB)</option>
-                                    }
-                                </select>
-                            </div>
-                            @if (item.Partido.CompetidorA.CompetidorIntegrantes.Count > 1)
-                            {
-                                <div class="campo" style="max-width:280px;">
-                                    <label>Recibe</label>
-                                    <select @bind="primerRecibeElegido">
-                                        <option value="">-- Selecciona --</option>
-                                        @foreach (var ci in item.Partido.CompetidorA.CompetidorIntegrantes)
-                                        {
-                                            <option value="@ci.AtletaId">@ci.Atleta.Nombre (@item.NombreA)</option>
-                                        }
-                                        @foreach (var ci in item.Partido.CompetidorB.CompetidorIntegrantes)
-                                        {
-                                            <option value="@ci.AtletaId">@ci.Atleta.Nombre (@item.NombreB)</option>
-                                        }
-                                    </select>
-                                </div>
-                            }
-                        }
-                        else if (estadoSet != null)
-                        {
-                            <p class="servicio-actual">Saca: @estadoSet.ProximoSirveNombre - Recibe: @estadoSet.ProximoRecibeNombre</p>
-                        }
-
-                        @if (estadoSet != null)
-                        {
-                            bool setGanado = estadoSet.Puntos.Count > 0 && CalendarioService.EsMarcadorValido(Math.Max(estadoSet.PuntosA, estadoSet.PuntosB), Math.Min(estadoSet.PuntosA, estadoSet.PuntosB), puntosJuego, puntosLimite);
-
-                            <h3 style="margin:10px 0;">@estadoSet.PuntosA - @estadoSet.PuntosB</h3>
-
-                            @if (!setGanado)
-                            {
-                                <button class="btn btn-primary" disabled="@procesandoPunto" @onclick='() => RegistrarPunto(item, "A")'>Punto @item.NombreA</button>
-                                <button class="btn btn-primary" disabled="@procesandoPunto" @onclick='() => RegistrarPunto(item, "B")'>Punto @item.NombreB</button>
-                                
-                                @if (estadoSet.Puntos.Count > 0)
-                                {
-                                    <button class="btn btn-ghost" @onclick="() => DeshacerPunto(item)">Deshacer último punto</button>
-                                }
-                            }
-
-                            @if (estadoSet.Puntos.Any())
-                            {
-                                <div class="grilla-puntos">
-                                    <div class="grilla-puntos-header">
-                                        <span>@item.NombreA</span>
-                                        <span>@item.NombreB</span>
-                                    </div>
-                                    @foreach (var p in estadoSet.Puntos.OrderByDescending(p => p.NumeroPunto))
-                                    {
-                                        <div class="grilla-puntos-fila">
-                                            <span class="grilla-punto-celda @(p.EquipoAnoto == "A" ? "anoto" : "")">@(p.EquipoAnoto == "A" ? p.PuntosA.ToString() : "")</span>
-                                            <span class="grilla-punto-celda @(p.EquipoAnoto == "B" ? "anoto" : "")">@(p.EquipoAnoto == "B" ? p.PuntosA.ToString() : "")</span>
-                                        </div>
-                                    }
-                                </div>
+                                <span class="badge badge-en-cancha"> · Cancha @item.CanchaNumero</span>
                             }
                             else
                             {
-                                <p class="mensaje-exito">Set ganado: @estadoSet.PuntosA-@estadoSet.PuntosB</p>
-                                <button class="btn btn-primary" @onclick="() => ConfirmarSetPuntoAPunto(item)">Confirmar y continuar</button>
-                                <button class="btn btn-ghost" @onclick="() => DeshacerPunto(item)">Deshacer último punto</button>
+                                <span class="badge badge-en-espera"> · En espera</span>
                             }
+                            <p class="partido-meta">@item.Categoria @(item.Grupo != null ? $"· Grupo {item.Grupo}" : "") @(item.Jornada != null ? $"· Jornada {item.Jornada}" : "")</p>
+                            <p class="partido-nombres">
+                                @item.NombreA <span class="partido-equipo">(@item.EquipoA)</span>
+                                &nbsp;vs&nbsp;
+                                @item.NombreB <span class="partido-equipo">(@item.EquipoB)</span>
+                            </p>
+                        </div>
+                        @if (!esSoloLectura)
+                        {
+                            <div class="partido-acciones-grid">
+                                <div class="partido-acciones-col">
+                                    @if (enCancha && !estaCapturando)
+                                    {
+                                        <button class="btn btn-primary" @onclick="() => AbrirCaptura(item)">Capturar</button>
+                                    }
+                                    else if (!enCancha)
+                                    {
+                                        <button class="btn btn-primary" @onclick="() => Activar(item.Partido.Id)">Activar</button>
+                                    }
+                                    @if (!estaCapturando)
+                                    {
+                                        <button class="btn btn-ghost" @onclick="() => Posponer(item.Partido.Id)">Posponer</button>
+                                    }
+                                </div>
+                                @if (!estaCapturando)
+                                {
+                                    <div class="partido-acciones-col">
+                                        <button class="btn btn-ghost" @onclick="() => MarcarDefault(item.Partido.Id, item.Partido.CompetidorAid, item.NombreA)" title="@item.NombreA gana por default">WO: @item.NombreA</button>
+                                        <button class="btn btn-ghost" @onclick="() => MarcarDefault(item.Partido.Id, item.Partido.CompetidorBid, item.NombreB)" title="@item.NombreB gana por default">WO: @item.NombreB</button>
+                                    </div>
+                                }
+                                @if (enCancha && !estaCapturando && esArbitro && TorneoActual.CanchasConfirmadas)
+                                {
+                                    <div class="partido-acciones-col">
+                                        <button class="btn btn-ghost btn-mini" @onclick='() => Navigation.NavigateTo("/fasefinal/punto-punto/{item.Partido.Id}")'>Punto por punto</button>
+                                    </div>
+                                }
+                            </div>
                         }
                     </div>
-                    <div style="margin-top: 10px;">
-                        <button class="btn btn-ghost" @onclick="() => MarcarDefaultPuntoAPunto(item, item.Partido.CompetidorAid, item.NombreA)" title="@item.NombreA gana por default">WO: @item.NombreA</button>
-                        <button class="btn btn-ghost" @onclick="() => MarcarDefaultPuntoAPunto(item, item.Partido.CompetidorBid, item.NombreB)" title="@item.NombreB gana por default">WO: @item.NombreB</button>
-                    </div>
-                    <div style="margin-top: 10px;">
-                        <button class="btn btn-ghost" @onclick="CancelarPuntoAPunto">Cambiar a marcador final</button>
-                        <button class="btn btn-ghost" @onclick="CancelarCaptura">Cancelar captura</button>
-                    </div>
-                }
+
+                    @if (estaCapturando)
+                    {
+                        @if (esArbitro && TorneoActual.CanchasConfirmadas)
+                        {
+                            <div style="margin:8px 0;">
+                                <button class="btn btn-ghost btn-mini" @onclick='() => Navigation.NavigateTo($"/fasefinal/punto-punto/{item.Partido.Id}")'>Capturar punto por punto</button>
+                            </div>
+                        }
+                        <div class="captura-sets">
+                            <div class="captura-set">
+                                <label>Set 1</label>
+                                @item.NombreA: <input type="number" min="0" class="input-mini" @bind="s1a" /><br />
+                                @item.NombreB: <input type="number" min="0" class="input-mini" @bind="s1b" />
+                            </div>
+                            @if (modalidadSets == "2 de 3 Sets")
+                            {
+                                <div class="captura-set">
+                                    <label>Set 2</label>
+                                    @item.NombreA: <input type="number" min="0" class="input-mini" @bind="s2a" /><br />
+                                    @item.NombreB: <input type="number" min="0" class="input-mini" @bind="s2b" />
+                                </div>
+                                <div class="captura-set">
+                                    <label>Set 3</label>
+                                    @item.NombreA: <input type="number" min="0" class="input-mini" @bind="s3a" /><br />
+                                    @item.NombreB: <input type="number" min="0" class="input-mini" @bind="s3b" />
+                                </div>
+                            }
+                        </div>
+                        <div style="margin-top: 10px;">
+                            <button class="btn btn-primary" @onclick="GuardarResultado">Guardar Resultado</button>
+                            <button class="btn btn-ghost" @onclick="CancelarCaptura">Cancelar</button>
+                        </div>
+                    }
             </div>
         }
     </div>
@@ -398,13 +318,6 @@ else
     private int? partidoCapturandoId;
     private int s1a, s1b, s2a, s2b, s3a, s3b;
     private bool esArbitro;
-
-    private bool modoPuntoAPunto;
-    private int numeroSetActual = 1;
-    private CalendarioService.EstadoSetPuntoAPunto? estadoSet;
-    private int? primerSirveElegido;
-    private int? primerRecibeElegido;
-    private bool procesandoPunto;
 
     private string mensajeInfo = "";
     private bool esExitoInfo = true;
@@ -579,9 +492,6 @@ else
     private async Task AbrirCaptura(PartidoQueueItem item)
     {
         partidoCapturandoId = item.Partido.Id;
-        modoPuntoAPunto = false;
-        numeroSetActual = 1;
-        estadoSet = null;
         s1a = s1b = s2a = s2b = s3a = s3b = 0;
 
         using var db = await DbFactory.CreateDbContextAsync();
@@ -594,122 +504,6 @@ else
     private void CancelarCaptura()
     {
         partidoCapturandoId = null;
-        modoPuntoAPunto = false;
-    }
-
-    private async Task MarcarDefaultPuntoAPunto(PartidoQueueItem item, int ganadorId, string nombreGanador)
-    {
-        bool confirmado = await JS.InvokeAsync<bool>("confirm", $"¿Terminar el partido y marcar a {nombreGanador} como ganador por default?");
-        if (!confirmado) return;
-
-        var (ok, msg) = await CalendarioSvc.MarcarPorDefaultAsync(item.Partido.Id, ganadorId, nombreUsuarioActual);
-        MostrarMensaje(msg, ok);
-
-        if (ok)
-        {
-            partidoCapturandoId = null;
-            modoPuntoAPunto = false;
-        }
-
-        await Refrescar();
-    }
-
-    private async Task IniciarPuntoAPunto(PartidoQueueItem item)
-    {
-        modoPuntoAPunto = true;
-        numeroSetActual = 1;
-        s1a = s1b = s2a = s2b = s3a = s3b = 0;
-        primerSirveElegido = null;
-        primerRecibeElegido = null;
-        await CargarEstadoSet(item.Partido.Id);
-    }
-
-    private void CancelarPuntoAPunto()
-    {
-        modoPuntoAPunto = false;
-        estadoSet = null;
-    }
-
-    private async Task CargarEstadoSet(int partidoId)
-    {
-        estadoSet = await CalendarioSvc.ObtenerEstadoSetAsync(partidoId, numeroSetActual);
-    }
-
-    private async Task RegistrarPunto(PartidoQueueItem item, string equipo)
-    {
-        if (procesandoPunto) return;
-        procesandoPunto = true;
-
-        bool esPrimerPunto = estadoSet == null || estadoSet.Puntos.Count == 0;
-
-        if (esPrimerPunto && item.Partido.CompetidorA.CompetidorIntegrantes.Count == 1 && primerSirveElegido != null)
-        {
-            bool sirveEsA = item.Partido.CompetidorA.CompetidorIntegrantes.Any(ci => ci.AtletaId == primerSirveElegido);
-            primerRecibeElegido = sirveEsA
-                ? item.Partido.CompetidorB.CompetidorIntegrantes.First().AtletaId
-                : item.Partido.CompetidorA.CompetidorIntegrantes.First().AtletaId;
-        }
-
-        if (esPrimerPunto && (primerSirveElegido == null || primerRecibeElegido == null))
-        {
-            MostrarMensaje("Elige quién saca y quién recibe para iniciar el set.", false);
-            procesandoPunto = false;
-            return;
-        }
-
-        var (ok, msg) = await CalendarioSvc.RegistrarPuntoAsync(
-            item.Partido.Id, numeroSetActual, equipo, puntosJuego, puntosLimite,
-            esPrimerPunto ? primerSirveElegido : null,
-            esPrimerPunto ? primerRecibeElegido : null);
-
-        if (!ok) MostrarMensaje(msg, false);
-
-        await CargarEstadoSet(item.Partido.Id);
-        procesandoPunto = false;
-    }
-
-    private async Task DeshacerPunto(PartidoQueueItem item)
-    {
-        var (ok, msg) = await CalendarioSvc.DeshacerUltimoPuntoAsync(item.Partido.Id, numeroSetActual);
-        if (!ok) MostrarMensaje(msg, false);
-        await CargarEstadoSet(item.Partido.Id);
-    }
-
-    private async Task ConfirmarSetPuntoAPunto(PartidoQueueItem item)
-    {
-        if (estadoSet == null) return;
-
-        if (numeroSetActual == 1) { s1a = estadoSet.PuntosA; s1b = estadoSet.PuntosB; }
-        else if (numeroSetActual == 2) { s2a = estadoSet.PuntosA; s2b = estadoSet.PuntosB; }
-        else { s3a = estadoSet.PuntosA; s3b = estadoSet.PuntosB; }
-
-        int setsA = (s1a > s1b ? 1 : 0) + (s2a > s2b && (s2a > 0 || s2b > 0) ? 1 : 0) + (s3a > s3b && (s3a > 0 || s3b > 0) ? 1 : 0);
-        int setsB = (s1b > s1a ? 1 : 0) + (s2b > s2a && (s2a > 0 || s2b > 0) ? 1 : 0) + (s3b > s3a && (s3a > 0 || s3b > 0) ? 1 : 0);
-
-        bool partidoTerminado = modalidadSets == "1 Set" || setsA == 2 || setsB == 2;
-
-        if (partidoTerminado)
-        {
-            bool confirmado = await JS.InvokeAsync<bool>("confirm", $"¿Terminar el partido con este resultado? Sets ganados: {setsA}-{setsB}.");
-            if (!confirmado) return;
-
-            var (ok, msg) = await CalendarioSvc.CapturarResultadoAsync(item.Partido.Id, s1a, s1b, s2a, s2b, s3a, s3b, modalidadSets, puntosJuego, puntosLimite, nombreUsuarioActual);
-            MostrarMensaje (msg, ok);
-
-            if (ok)
-            {
-                partidoCapturandoId = null;
-                modoPuntoAPunto = false;
-                await Refrescar();
-            }
-        }
-        else
-        {
-            numeroSetActual++;
-            primerSirveElegido = null;
-            primerRecibeElegido = null;
-            await CargarEstadoSet(item.Partido.Id);
-        }
     }
 
     private async Task GuardarResultado()

@@ -769,6 +769,24 @@ h1:focus {
     flex-wrap: wrap;
 }
 
+.partido-acciones-grid {
+    display: flex;
+    gap: 10px;
+}
+
+.partido-acciones-col {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.partido-equipo {
+    font-family: 'Inter', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    font-size: 0.7rem;
+    font-weight: 400;
+    color: #5B6B68;
+}
+
 .captura-sets {
     display: flex;
     gap: 20px;

@@ -213,7 +213,7 @@
                     {
                         <h2>Llave @banda</h2>
                     }
-                    
+
                     <div class="bracket-controles">
                         @for (int r = 0; r < fasesRonda.Count; r++)
                         {
@@ -223,7 +223,7 @@
                         <button class="btn btn-secondary" @onclick="() => VerTodo(banda)">Ver todo</button>
                         <button class="btn btn-ghost" @onclick="() => Imprimir(banda)">Imprimir</button>
                     </div>
-                    
+
                     <div id="bracket-wrap-@(banda ?? 0)" class="bracket-wrapper">
                         <div class="bracket-grid" style="--filas:@totalFilas; grid-template-columns:@columnasTemplate;">
 
@@ -300,7 +300,41 @@
 
                                                 @if (p.Estado != "Jugado" && !esSoloLectura && !TorneoActual.CanchasConfirmadas)
                                                 {
-                                                    <p class="nota">Confirma las cnachas para poder actuar sobre este partido.</p>
+                                                    <p class="nota">Confirma las canchas para poder actuar sobre este partido.</p>
+                                                }
+                                                else if (p.Estado != "Jugado" && !esSoloLectura && estaCapturando)
+                                                {
+                                                    @if (esArbitro && TorneoActual.CanchasConfirmadas)
+                                                    {
+                                                        <div style="margin:6px 0;">
+                                                            <button class="btn btn-ghost btn-mini" @onclick='() => Navigation.NavigateTo($"/fasefinal/punto-punto/{p.Id}")'>Capturar punto por punto</button>
+                                                        </div>
+                                                    }
+
+                                                    <div class="captura-sets">
+                                                        <div class="captura-set">
+                                                            <label>Set 1</label>
+                                                            @nombreA: <input type="number" min="0" class="input-mini" @bind="s1a" /><br />
+                                                            @nombreB: <input type="number" min="0" class="input-mini" @bind="s1b" />
+                                                        </div>
+                                                        @if (modalidadSets == "2 de 3 Sets")
+                                                        {
+                                                            <div class="captura-set">
+                                                                <label>Set 2</label>
+                                                                @nombreA: <input type="number" min="0" class="input-mini" @bind="s2a" /><br />
+                                                                @nombreB: <input type="number" min="0" class="input-mini" @bind="s2b" />
+                                                            </div>
+                                                            <div class="captura-set">
+                                                                <label>Set 3</label>
+                                                                @nombreA: <input type="number" min="0" class="input-mini" @bind="s3a" /><br />
+                                                                @nombreB: <input type="number" min="0" class="input-mini" @bind="s3b" />
+                                                            </div>
+                                                        }
+                                                    </div>
+                                                    <div style="margin-top:8px;">
+                                                        <button class="btn btn-primary btn-mini" @onclick="GuardarResultado">Guardar</button>
+                                                        <button class="btn btn-ghost btn-mini" @onclick="() => partidoCapturandoId = null">Cancelar</button>
+                                                    </div>
                                                 }
                                                 else if (p.Estado != "Jugado" && !esSoloLectura)
                                                 {
@@ -309,7 +343,7 @@
                                                         {
                                                             <button class="btn btn-primary btn-mini" @onclick="() => Activar(p.Id)">Activar</button>
                                                         }
-                                                        <button class="btn btn-primary btn-mini" @onclick="() => AbrirCaptura(p.Id)">@(estaCapturando ? "Capturando..." : "Capturar")</button>
+                                                        <button class="btn btn-primary btn-mini" @onclick="() => AbrirCaptura(p.Id)">Capturar</button>
                                                         <button class="btn btn-ghost btn-mini" @onclick="() => MarcarDefault(p.Id, p.CompetidorAid, nombreA)" title="@nombreA gana por default">WO A</button>
                                                         <button class="btn btn-ghost btn-mini" @onclick="() => MarcarDefault(p.Id, p.CompetidorBid, nombreB)" title="@nombreB gana por default">WO B</button>
                                                     </div>
@@ -353,53 +387,6 @@
                         </div>
                     </div>
                 </div>
-            }
-
-            @if (partidoCapturandoId != null)
-            {
-                var partidoActivo = bracket.Select(x => x.Partido).FirstOrDefault(p => p != null && p.Id == partidoCapturandoId);
-                if (partidoActivo != null)
-                {
-                    string nombreA = string.Join(" / ", partidoActivo.CompetidorA.CompetidorIntegrantes.Select(ci => ci.Atleta.Nombre));
-                    string nombreB = string.Join(" / ", partidoActivo.CompetidorB.CompetidorIntegrantes.Select(ci => ci.Atleta.Nombre));
-
-                    <div class="tarjeta no-imprimir">
-                        <h3>Capturar resultado: @nombreA vs @nombreB</h3>
-
-                            @if (esArbitro && TorneoActual.CanchasConfirmadas)
-                            {
-                                <div style="margin:8px 0;">
-                                    <button class="btn btn-ghost btn-mini" @onclick='() => Navigation.NavigateTo($"/fasefinal/punto-punto/{partidoActivo.Id}")'>Capturar punto por punto</button>
-                                </div>
-                            }
-
-                            <div class="captura-sets">
-                                <div class="captura-set">
-                                    <label>Set 1</label>
-                                    @nombreA: <input type="number" min="0" class="input-mini" @bind="s1a" /><br />
-                                    @nombreB: <input type="number" min="0" class="input-mini" @bind="s1b" />
-                                </div>
-                                @if (modalidadSets == "2 de 3 Sets")
-                                {
-                                    <div class="captura-set">
-                                        <label>Set 2</label>
-                                        @nombreA: <input type="number" min="0" class="input-mini" @bind="s2a" /><br />
-                                        @nombreB: <input type="number" min="0" class="input-mini" @bind="s2b" />
-                                    </div>
-                                    <div class="captura-set">
-                                        <label>Set 3</label>
-                                        @nombreA: <input type="number" min="0" class="input-mini" @bind="s3a" /><br />
-                                        @nombreB: <input type="number" min="0" class="input-mini" @bind="s3b" />
-                                    </div>
-                                }
-                            </div>
-                            <div style="margin-top:10px;">
-                                <button class="btn btn-primary" @onclick="GuardarResultado">Guardar Resultado</button>
-                                <button class="btn btn-ghost" @onclick="() => partidoCapturandoId = null">Cancelar</button>
-                            </div>
-                        
-                    </div>
-                }
             }
 
             @if (!string.IsNullOrEmpty(mensaje))

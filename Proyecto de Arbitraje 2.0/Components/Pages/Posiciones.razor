@@ -235,14 +235,14 @@
             }
 
             <div class="tarjeta">
-                <h2>Resto de atletas</h2>
+                <h2>Resto de posiciones</h2>
                 @if (!tablaGeneralEliminatoria.Any())
                 {
-                    <p class="vacio">Sin atletas registrados.</p>
+                    <p class="vacio">No hay más atletas por acomodar.</p>
                 }
                 else
                 {
-                    @RenderTabla(tablaGeneralEliminatoria)
+                    @RenderTablaConPosicion(tablaGeneralEliminatoria)
                 }
             </div>
         }
@@ -285,6 +285,7 @@
         public int Pc { get; set; }
         public int Dp => Pf - Pc;
         public int? OrdenDesempate { get; set; }
+        public string? PosicionTexto { get; set; }
     }
 
     private class PodioEntrada
@@ -441,6 +442,62 @@
             .ToList();
     }
 
+    private async Task<List<(string Puesto, PodioEntrada Entrada)>> ArmarPodioEliminatoriaAsync(TorneoContext db, int categoriaId)
+    {
+        var integrantes = await db.CompetidorIntegrantes
+            .Where(ci => ci.Competidor.CategoriaId == categoriaId)
+            .Select(ci => new { ci.AtletaId, ci.CompetidorId })
+            .ToListAsync();
+        var competidorIdPorAtleta = integrantes.ToDictionary(x => x.AtletaId, x => x.CompetidorId);
+
+        var historial = await db.RankingHistorials
+            .Where(r => r.CategoriaId == categoriaId && r.Posicion <= 3)
+            .Include(r => r.Atleta).ThenInclude(a => a.Municipio)
+            .ToListAsync();
+
+        if (!historial.Any()) return new();
+
+        var porCompetidor = historial
+            .GroupBy(r => competidorIdPorAtleta.GetValueOrDefault(r.AtletaId, -r.AtletaId))
+            .Select(g => new
+            {
+                CompetidorId = g.Key,
+                Posicion = g.First().Posicion,
+                Entrada = new PodioEntrada
+                {
+                    Nombres = string.Join(" / ", g.Select(r => r.Atleta.Nombre)),
+                    Municipio = g.First().Atleta.Municipio?.Nombre ?? ""
+                }
+            })
+            .ToList();
+
+        var idsTerceros = porCompetidor.Where(x => x.Posicion == 3).Select(x => x.CompetidorId).ToList();
+        var statsTerceros = await db.Competidores
+            .Where(c => idsTerceros.Contains(c.Id))
+            .ToDictionaryAsync(c => c.Id, c => c);
+
+        var resultado = new List<(string Puesto, PodioEntrada Entrada)>();
+
+        var campeon = porCompetidor.FirstOrDefault(x => x.Posicion == 1);
+        if (campeon != null) resultado.Add(("Campeón", campeon.Entrada));
+
+        var subcampeon = porCompetidor.FirstOrDefault(x => x.Posicion == 2);
+        if (subcampeon != null) resultado.Add(("Subcampeón", subcampeon.Entrada));
+
+        var terceros = porCompetidor.Where(x => x.Posicion == 3)
+            .OrderByDescending(x => statsTerceros.GetValueOrDefault(x.CompetidorId)?.Pg ?? 0)
+            .ThenByDescending(x => (statsTerceros.GetValueOrDefault(x.CompetidorId)?.Sg ?? 0) - (statsTerceros.GetValueOrDefault(x.CompetidorId)?.Sp ?? 0))
+            .ThenByDescending(x => (statsTerceros.GetValueOrDefault(x.CompetidorId)?.Pf ?? 0) - (statsTerceros.GetValueOrDefault(x.CompetidorId)?.Pc ?? 0))
+            .ToList();
+
+        for (int i = 0; i < terceros.Count; i++)
+        {
+            resultado.Add((i == 0 ? "3er lugar" : "4to lugar", terceros[i].Entrada));
+        }
+
+        return resultado;
+    }
+
     private static PodioEntrada ArmarEntrada(Competidore c) => new PodioEntrada
     {
         Nombres = string.Join(" / ", c.CompetidorIntegrantes.Select(ci => ci.Atleta.Nombre)),
@@ -582,22 +639,42 @@
                 .Include(c => c.CompetidorIntegrantes).ThenInclude(ci => ci.Atleta).ThenInclude(a => a.Municipio)
                 .ToListAsync();
 
-            tablaGeneralEliminatoria = competidores.Select(c => new PosicionFila
-            {
-                CompetidorId = c.Id,
-                Nombre = string.Join(" / ", c.CompetidorIntegrantes.Select(ci => ci.Atleta.Nombre)),
-                Equipo = string.Join(" / ", c.CompetidorIntegrantes.Select(ci => ci.Atleta.Municipio.Nombre).Distinct()),
-                Pg = c.Pg,
-                Pp = c.Pp,
-                Sg = c.Sg,
-                Sp = c.Sp,
-                Pf = c.Pf,
-                Pc = c.Pc
-            })
-            .OrderByDescending(f => f.Pg).ThenByDescending(f => f.Ds).ThenByDescending(f => f.Dp)
-            .ToList();
+            var historialPosiciones = await db.RankingHistorials
+                .Where(r => r.CategoriaId == categoriaActiva.Id)
+                .ToListAsync();
+            var posicionPorAtleta = historialPosiciones.ToDictionary(r => r.AtletaId, r => r.Posicion);
 
-            podioEliminatoria = await ArmarPodioDesdeHistorialAsync(db, categoriaActiva.Id);
+            int? PosicionCompetidor(Competidore c) =>
+                c.CompetidorIntegrantes
+                    .Select(ci => posicionPorAtleta.TryGetValue(ci.AtletaId, out var pos) ? pos : (int?)null)
+                    .FirstOrDefault(p => p != null);
+
+            podioEliminatoria = await ArmarPodioEliminatoriaAsync(db, categoriaActiva.Id);
+
+            var restantes = competidores
+                .Where(c => (PosicionCompetidor(c) ?? 99) > 3)
+                .Select(c => new PosicionFila
+                {
+                    CompetidorId = c.Id,
+                    Nombre = string.Join(" / ", c.CompetidorIntegrantes.Select(ci => ci.Atleta.Nombre)),
+                    Equipo = string.Join(" / ", c.CompetidorIntegrantes.Select(ci => ci.Atleta.Municipio.Nombre).Distinct()),
+                    Pg = c.Pg,
+                    Pp = c.Pp,
+                    Sg = c.Sg,
+                    Sp = c.Sp,
+                    Pf = c.Pf,
+                    Pc = c.Pc
+                })
+                .OrderByDescending(f => f.Pg).ThenByDescending(f => f.Ds).ThenByDescending(f => f.Dp)
+                .ToList();
+
+            int siguientePosicion = podioEliminatoria.Count + 1;
+            foreach (var f in restantes)
+            {
+                f.PosicionTexto = (siguientePosicion++).ToString();
+            }
+
+            tablaGeneralEliminatoria = restantes;
         }
     }
 
@@ -732,6 +809,45 @@
                 @foreach (var f in filas)
                 {
                     <tr>
+                        <td>@f.Nombre</td>
+                        <td>@f.Equipo</td>
+                        <td>@f.Pg</td>
+                        <td>@f.Pp</td>
+                        <td>@f.Sg</td>
+                        <td>@f.Sp</td>
+                        <td>@f.Ds</td>
+                        <td>@f.Pf</td>
+                        <td>@f.Pc</td>
+                        <td>@f.Dp</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    };
+
+    private RenderFragment RenderTablaConPosicion(List<PosicionFila> filas) => __builder =>
+    {
+        <table class="tabla-limpia">
+            <thead>
+                <tr>
+                    <th>Posición</th>
+                    <th>@EtiquetaCompetidor</th>
+                    <th>Equipo</th>
+                    <th>PG</th>
+                    <th>PP</th>
+                    <th>SG</th>
+                    <th>SP</th>
+                    <th>±S</th>
+                    <th>PF</th>
+                    <th>PC</th>
+                    <th>±P</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var f in filas)
+                {
+                    <tr>
+                        <td>@f.PosicionTexto</td>
                         <td>@f.Nombre</td>
                         <td>@f.Equipo</td>
                         <td>@f.Pg</td>

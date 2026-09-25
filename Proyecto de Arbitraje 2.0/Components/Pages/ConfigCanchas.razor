@@ -138,18 +138,26 @@
                                 @if (!esSoloLectura)
                                 {
                                     <button class="btn btn-ghost btn-mini" @onclick="() => ReactivarCancha(c)">Reactivar</button>
+                                    @if (!TorneoActual.CanchasConfirmadas)
+                                    {
+                                        <button class="btn-chip-x" @onclick="() => QuitarCancha(c)" title="Eliminar por completo">× Eliminar</button>
+                                    }
                                 }
                             }
                             else if (!esSoloLectura)
                             {
-                                <button class="btn-chip-x" @onclick="() => DesactivarCancha(c)" title="Desactivar">Desactivar</button>
+                                @if (!TorneoActual.CanchasConfirmadas)
+                                {
+                                    <button class="btn-chip-x" @onclick="() => QuitarCancha(c)" title="Eliminar por completo">× Eliminar</button>
+                                }
+                                <button class="btn-chip-x" @onclick="() => DesactivarCancha(c)" title="Desactivar (se conserva el historial de partidos)">Desactivar</button>
                             }
                         </div>
                     </div>
                 }
             </div>
 
-            @if (!esSoloLectura)
+            @if (!esSoloLectura && !TorneoActual.CanchasConfirmadas)
             {
                 <button class="btn btn-primary" @onclick="AgregarCancha">Agregar Cancha</button>
             }

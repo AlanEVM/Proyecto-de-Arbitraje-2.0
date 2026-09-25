@@ -91,12 +91,9 @@
                 }
 
                 <div class="campos-fila" style="margin-top:10px;">
-                    <div class="campo" style="max-width:140px;">
-                        <label>Agregar grupos hasta llegar a</label>
-                        <input type="number" min="1" max="20" @bind="numeroGrupos" />
-                    </div>
-                    <div class="campo">
-                        <button class="btn btn-secondary" @onclick="CrearGrupos">Crear / Agregar Grupos</button>
+                    <div class="campo" style="max-width:180px;">
+                        <label>Cantidad de grupos</label>
+                        <input type="number" min="1" max="20" @bind="numeroGrupos" @bind:after="ActualizarGrupos" />
                     </div>
                 </div>
             </div>
@@ -289,7 +286,7 @@
                 }
 
                 
-                    var sinGrupo = competidoresActuales.Where(c => c.GrupoId == null).ToList();
+                var sinGrupo = competidoresActuales.Where(c => c.GrupoId == null).ToList();
                 
                 @if (sinGrupo.Any())
                 {
@@ -611,7 +608,7 @@
         bool tieneAtletas = await db.Competidores.AnyAsync(c => c.GrupoId == grupo.Id);
         if (tieneAtletas)
         {
-            mensajeError = $"El Grupo {grupo.Letra} tiene atletas registrados. Elimínalos primero.";
+            mensajeError = $"El Grupo {grupo.Letra} tiene atletas registrados. Muévelos a otro grupo, dales de baja, o elimínalos antes de borrar este grupo.";
             return;
         }
 
@@ -630,26 +627,83 @@
         await CargarCompetidores();
     }
 
-    private async Task CrearGrupos()
+    private async Task ActualizarGrupos()
     {
-        if (categoriaActiva?.RegistroCerrado == true) {  mensajeError = "El registro de esta categoría está cerrado."; return; }
+        if (categoriaActiva?.RegistroCerrado == true) { mensajeError = "El registro de esta categoría está cerrado."; return; }
 
         using var db = await DbFactory.CreateDbContextAsync();
+
+        bool yaHayPartidos = await db.Partidos.AnyAsync(p => p.CategoriaId == categoriaActiva!.Id && p.GrupoId != null);
+        if (yaHayPartidos)
+        {
+            mensajeError = "Esta categoría ya tiene partidos de grupos generados en el calendario. No se puede cambiar la cantidad de grupos.";
+            numeroGrupos = grupos!.Count;
+            return;
+        }
+
+        bool confirmado = await JS.InvokeAsync<bool>("confirm",
+            "Cambiar la cantidad de grupos va a reacomodar automáticamente a TODOS los atletas activos de esta categoría entre los grupos, balanceados por ranking. ¿Continuar?");
+        if (!confirmado)
+        {
+            numeroGrupos = grupos!.Count;
+            return;
+        }
+
+        mensajeError = ""; mensajeExito = "";
 
         var letrasNecesarias = Enumerable.Range(0, numeroGrupos)
             .Select(i => ((char)('A' + i)).ToString())
             .ToList();
 
-        var existentes = grupos!.Select(g => g.Letra).ToHashSet();
+        var existentes = await db.Grupos.Where(g => g.CategoriaId == categoriaActiva!.Id).ToListAsync();
 
-        foreach (var letra in letrasNecesarias.Where(l => !existentes.Contains(l)))
+        foreach (var letra in letrasNecesarias.Where(l => !existentes.Any(g => g.Letra == l)))
         {
             db.Grupos.Add(new Grupo { CategoriaId = categoriaActiva!.Id, Letra = letra });
         }
 
+        foreach (var g in existentes.Where(g => !letrasNecesarias.Contains(g.Letra)))
+        {
+            db.Grupos.Remove(g);
+        }
+
+        await db.SaveChangesAsync();
+
+        var gruposFinales = await db.Grupos.Where(g => g.CategoriaId == categoriaActiva!.Id).OrderBy(g => g.Letra).ToListAsync();
+
+        var competidoresActivos = await db.Competidores
+            .Where(c => c.CategoriaId == categoriaActiva!.Id && c.Activo)
+            .ToListAsync();
+
+        var conPuntos = new List<(Competidore Competidor, int Puntos)>();
+        foreach (var c in competidoresActivos)
+        {
+            int pts = await CalcularPuntosPreviosAsync(db, c.Id, categoriaActiva!);
+            conPuntos.Add((c, pts));
+        }
+
+        var ordenados = conPuntos.OrderByDescending(x => x.Puntos).ToList();
+
+        int n = gruposFinales.Count;
+        var ordenGrupos = new List<int>();
+        int totalRondas = n == 0 ? 0 : (int)Math.Ceiling((double)ordenados.Count / n);
+        for (int r = 0; r < totalRondas; r++)
+        {
+            var ronda = Enumerable.Range(0, n).ToList();
+            if (r % 2 == 1) ronda.Reverse();
+            ordenGrupos.AddRange(ronda);
+        }
+
+        for (int i = 0; i < ordenados.Count; i++)
+        {
+            ordenados[i].Competidor.GrupoId = gruposFinales[ordenGrupos[i]].Id;
+        }
+
         await db.SaveChangesAsync();
         await CargarGrupos();
-        mensajeExito = "Grupos actualizados.";
+        await CargarCompetidores();
+
+        mensajeExito = $"Grupos actualizados y {ordenados.Count} atletas reacomodados según su ranking.";
     }
 
     private async Task<int?> ElegirGrupoBalanceadoAsync(TorneoContext db, Categoria categoria, int nuevoCompetidorId)
@@ -829,7 +883,7 @@
         try { await db.SaveChangesAsync(); }
         catch (DbUpdateException) { mensajeError = "Este atleta ya está registrado en esta misma categoría."; return; }
 
-        nuevoNombreAtleta = ""; municipioSeleccionadoId = 0;
+        nuevoNombreAtleta = "";
         anioNacimientoNuevo = null;
         atletaSingleEsNuevo = true; atletaSingleExistenteId = 0;
         mensajeExito = "¡Atleta registrado!";
