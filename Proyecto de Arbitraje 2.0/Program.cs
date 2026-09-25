@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using ProyectoArbitraje.Components;
 using ProyectoArbitraje.Components.Pages;
@@ -49,6 +50,15 @@ builder.Services.AddAuthorization();
 
 var app = builder.Build();
 
+// Detrás del Load Balancer de AWS, la petición le llega a esta app como HTTP
+// normal (el HTTPS se "termina" en el Load Balancer). Este middleware hace
+// que la app SEPA que la petición original venía por HTTPS, para que la
+// cookie de sesión y el resto del pipeline se comporten bien.
+app.UseForwardedHeaders(new ForwardedHeadersOptions
+{
+    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
+});
+
 // Configure the HTTP request pipeline.
 if (!app.Environment.IsDevelopment())
 {
@@ -57,7 +67,11 @@ if (!app.Environment.IsDevelopment())
     app.UseHsts();
 }
 app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
-app.UseHttpsRedirection();
+// NOTA: se quita app.UseHttpsRedirection() aquí. En AWS, el redirect a HTTPS
+// lo va a forzar el Load Balancer (listener 80 -> redirect a 443), no esta
+// app. Dejarlo activo aquí puede causar loops de redirección detrás del
+// balanceador. Si en algún momento dejas de usar Load Balancer, puedes
+// volver a activarlo.
 
 app.UseAuthentication();
 app.UseAuthorization();
