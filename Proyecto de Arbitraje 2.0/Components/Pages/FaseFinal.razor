@@ -80,7 +80,11 @@
 
                         @if (propuestaEliminatoria == null)
                         {
-                            @if (competidoresParaSembrado != null && competidoresParaSembrado.Count == 0)
+                            @if (competidoresParaSembrado != null && competidoresParaSembrado.Count >= 2 && competidoresParaSembrado.Count <= 7)
+                            {
+                                <p class="mensaje-aviso">Esta categoría tiene @competidoresParaSembrado.Count atletas activos (7 o menos), así que no se arma bracket — se juega todos contra todos. Genera sus partidos desde la página "Calendario" (o cerrando el registro desde "Registro").</p>
+                            }
+                            else if (competidoresParaSembrado != null && competidoresParaSembrado.Count == 0)
                             {
                                 <p class="vacio">No hay atletas registrados en esta categoría todavía. Regístralos en "Registro" antes de sortear el bracket.</p>
                             }
@@ -249,6 +253,10 @@
                                                 <span>@string.Join(" / ", item.Partido.CompetidorA.CompetidorIntegrantes.Select(ci => ci.Atleta.Municipio.Nombre).Distinct())</span>
                                                 <span>@string.Join(" / ", item.Partido.CompetidorB.CompetidorIntegrantes.Select(ci => ci.Atleta.Municipio.Nombre).Distinct())</span>
                                             }
+                                            else if (item.CompetidorConBye != null)
+                                            {
+                                                <span>@string.Join(" / ", item.CompetidorConBye.CompetidorIntegrantes.Select(ci => ci.Atleta.Municipio.Nombre).Distinct())</span>
+                                            }
                                         </div>
                                     }
 
@@ -311,7 +319,6 @@
                                         else if (item.CompetidorConBye != null)
                                         {
                                             string nombreBye = string.Join(" / ", item.CompetidorConBye.CompetidorIntegrantes.Select(ci => ci.Atleta.Nombre));
-                                            string equipoBye = string.Join(" / ", item.CompetidorConBye.CompetidorIntegrantes.Select(ci => ci.Atleta.Municipio.Nombre).Distinct());
 
                                             <div class="bracket-bye">
                                                 @if (seeds.TryGetValue(item.CompetidorConBye.Id, out int seedBye) && MostrarSembrado(seedBye) && sembradosYaMostrados.Add(item.CompetidorConBye.Id))
@@ -319,10 +326,6 @@
                                                     <span class="bracket-seed">#@EtiquetaSembrado(seedBye)</span>
                                                 }
                                                 <strong>@nombreBye</strong>
-                                                @if (!string.IsNullOrEmpty(equipoBye))
-                                                {
-                                                    <span class="bracket-equipo-inline">@equipoBye</span>
-                                                }
                                                 <div class="nota" style="margin-top:2px;">BYE - pasa directo</div>
                                             </div>
                                         }

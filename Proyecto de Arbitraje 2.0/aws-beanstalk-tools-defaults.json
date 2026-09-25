@@ -1,0 +1,13 @@
+{
+  "region": "us-east-2",
+  "configuration": "Debug",
+  "framework": "net10.0",
+  "self-contained": false,
+  "application": "ProyectoDeArbitraje",
+  "environment": "ProyectoDeArbitraje-env",
+  "app-path": "/",
+  "iis-website": "Default Web Site",
+  "enable-xray": false,
+  "enhanced-health-type": "enhanced",
+  "additional-options": ""
+}

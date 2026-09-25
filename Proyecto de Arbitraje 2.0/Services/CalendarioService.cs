@@ -10,6 +10,8 @@ public class PartidoQueueItem
     public Partido Partido { get; set; } = null!;
     public string NombreA { get; set; } = "";
     public string NombreB { get; set; } = "";
+    public string EquipoA { get; set; } = "";
+    public string EquipoB { get; set; } = "";
     public string Categoria { get; set; } = "";
     public string? Grupo { get; set; }
     public int? Jornada { get; set; }
@@ -327,8 +329,8 @@ public class CalendarioService
             .Where(p => categoriaIds.Contains(p.CategoriaId)
                 && (p.Estado == "Pendiente" || p.Estado == "EnCancha")
                 && (p.Fase == "Grupos" || p.Fase == "Liga"))
-            .Include(p => p.CompetidorA).ThenInclude(c => c.CompetidorIntegrantes).ThenInclude(ci => ci.Atleta)
-            .Include(p => p.CompetidorB).ThenInclude(c => c.CompetidorIntegrantes).ThenInclude(ci => ci.Atleta)
+            .Include(p => p.CompetidorA).ThenInclude(c => c.CompetidorIntegrantes).ThenInclude(ci => ci.Atleta).ThenInclude(a => a.Municipio)
+            .Include(p => p.CompetidorB).ThenInclude(c => c.CompetidorIntegrantes).ThenInclude(ci => ci.Atleta).ThenInclude(a => a.Municipio)
             .Include(p => p.Categoria)
             .Include(p => p.Grupo)
             .Include(p => p.Cancha)
@@ -370,6 +372,8 @@ public class CalendarioService
             Partido = p,
             NombreA = string.Join(" / ", p.CompetidorA.CompetidorIntegrantes.Select(ci => ci.Atleta.Nombre)),
             NombreB = string.Join(" / ", p.CompetidorB.CompetidorIntegrantes.Select(ci => ci.Atleta.Nombre)),
+            EquipoA = string.Join(" / ", p.CompetidorA.CompetidorIntegrantes.Select(ci => ci.Atleta.Municipio.Nombre).Distinct()),
+            EquipoB = string.Join(" / ", p.CompetidorB.CompetidorIntegrantes.Select(ci => ci.Atleta.Municipio.Nombre).Distinct()),
             Categoria = $"{p.Categoria.Nombre} · {p.Categoria.Modalidad} · {p.Categoria.Rama}",
             Grupo = p.Grupo?.Letra,
             Jornada = p.Jornada,
@@ -548,15 +552,92 @@ public class CalendarioService
         var partido = await db.Partidos.FindAsync(partidoId);
         if (partido == null) return;
 
-        int maxOrden = await db.Partidos
-            .Where(p => p.CategoriaId == partido.CategoriaId && p.GrupoId == partido.GrupoId && p.Jornada == partido.Jornada)
-            .MaxAsync(p => (int?)p.OrdenCola) ?? 0;
+        var pendientesBucket = await db.Partidos
+            .Where(p => p.CategoriaId == partido.CategoriaId && p.GrupoId == partido.GrupoId && p.Jornada == partido.Jornada && p.Estado == "Pendiente")
+            .OrderBy(p => p.OrdenCola)
+            .ToListAsync();
 
-        partido.OrdenCola = maxOrden + 1;
+        const int espacioMinimo = 3;
+
+        if (pendientesBucket.Count <= espacioMinimo)
+        {
+            int maxOrden = pendientesBucket.Any() ? pendientesBucket.Max(p => p.OrdenCola) : 0;
+            partido.OrdenCola = maxOrden + 1;
+        }
+        else
+        {
+            int ordenObjetivo = pendientesBucket[espacioMinimo].OrdenCola;
+
+            foreach (var p in pendientesBucket.Where(p => p.OrdenCola >= ordenObjetivo))
+            {
+                p.OrdenCola++;
+            }
+
+            partido.OrdenCola = ordenObjetivo;
+        }
+
         partido.Estado = "Pendiente";
         await db.SaveChangesAsync();
 
         _eventBus.Notificar();
+    }
+
+    public async Task<(bool ok, string mensaje)> CerrarRegistroAsync(int categoriaId)
+    {
+        using var db = await _factory.CreateDbContextAsync();
+        var categoria = await db.Categorias.FindAsync(categoriaId);
+        if (categoria == null) return (false, "Categoría no encontrada");
+        if (categoria.RegistroCerrado) return (false, "Esta categoría ya tiene el registro cerrado.");
+
+        categoria.RegistroCerrado = true;
+        await db.SaveChangesAsync();
+
+        string detalle;
+        switch (categoria.Formato)
+        {
+            case "GruposFaseFinal":
+                int nGrupos = await GenerarPartidosGrupoFaseAsync(categoriaId);
+                detalle = nGrupos > 0 ? $"Se generaron {nGrupos} partidos de grupos." : "No se generaron partidos (revisa que existan grupos con competidores).";
+                break;
+
+            case "Eliminatoria":
+                int activos = await db.Competidores.CountAsync(c => c.CategoriaId == categoriaId && c.Activo);
+                if (activos >= 2 && activos <= 7)
+                {
+                    int nRR = await GenerarRoundRobinAsync(categoriaId);
+                    detalle = nRR > 0 ? $"Se generaron {nRR} partidos (todos contra todos, por ser {activos} atletas)." : "No se pudieron generar los partidos.";
+                }
+                else
+                {
+                    detalle = "Registro cerrado. El bracket se sortea manualmente en Fase Final.";
+                }
+                break;
+
+            case "Jornadas":
+                var (ok, msg, _) = await GenerarSiguienteJornadaAsync(categoriaId);
+                detalle = ok ? $"Se generó la primera jornada. {msg}" : $"Registro cerrado, pero no se pudo generar la primera jornada: {msg}";
+                break;
+
+            default:
+                detalle = "Registro cerrado.";
+                break;
+        }
+
+        _eventBus.Notificar();
+        return (true, detalle);
+    }
+
+    public async Task<(bool ok, string mensaje)> ReabrirRegistroAsync(int categoriaId)
+    {
+        using var db = await _factory.CreateDbContextAsync();
+        var categoria = await db.Categorias.FindAsync(categoriaId);
+        if (categoria == null) return (false, "Categoría no encontrada.");
+
+        categoria.RegistroCerrado = false;
+        await db.SaveChangesAsync();
+
+        _eventBus.Notificar();
+        return (true, "Registro reabierto.");
     }
 
     // =================================================================

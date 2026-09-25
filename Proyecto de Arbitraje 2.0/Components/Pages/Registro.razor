@@ -47,6 +47,17 @@
 
                 @if (categoriaActiva != null)
                 {
+                    <div>
+                        @if (categoriaActiva.RegistroCerrado)
+                        {
+                            <span class="badge badge-jugado">Registro cerrado</span>
+                            <button class="btn btn-ghost btn-mini" @onclick="ReabrirRegistro">Reabrir registro</button>
+                        }
+                        else
+                        {
+                            <button class="btn btn-primary" @onclick="CerrarRegistro">Cerrar registro</button>
+                        }
+                    </div>
                     <div class="campo">
                         <button class="btn btn-danger" @onclick="EliminarCategoriaActiva">Eliminar esta categoría</button>
                     </div>
@@ -592,6 +603,8 @@
 
     private async Task EliminarGrupo(Grupo grupo)
     {
+        if (categoriaActiva?.RegistroCerrado == true) {  mensajeError = "El registro de esta categoría está cerrado."; return; }
+
         mensajeError = ""; mensajeExito = "";
         using var db = await DbFactory.CreateDbContextAsync();
 
@@ -619,6 +632,8 @@
 
     private async Task CrearGrupos()
     {
+        if (categoriaActiva?.RegistroCerrado == true) {  mensajeError = "El registro de esta categoría está cerrado."; return; }
+
         using var db = await DbFactory.CreateDbContextAsync();
 
         var letrasNecesarias = Enumerable.Range(0, numeroGrupos)
@@ -691,6 +706,8 @@
 
     private async Task ConfirmarMoverGrupo()
     {
+        if (categoriaActiva?.RegistroCerrado == true) {  mensajeError = "El registro de esta categoría está cerrado."; return; }
+
         if (competidorSeleccionadoParaMover == null || grupoDestinoId == 0) return;
 
         string letraDestino = grupos?.FirstOrDefault(g => g.Id == grupoDestinoId)?.Letra ?? "?";
@@ -707,6 +724,8 @@
 
     private async Task MoverDeGrupo(int competidorId, int nuevoGrupoId)
     {
+        if (categoriaActiva?.RegistroCerrado == true) {  mensajeError = "El registro de esta categoría está cerrado."; return; }
+
         mensajeError = ""; mensajeExito = "";
         using var db = await DbFactory.CreateDbContextAsync();
 
@@ -730,6 +749,8 @@
 
     private async Task RegistrarAtleta()
     {
+        if (categoriaActiva?.RegistroCerrado == true) {  mensajeError = "El registro de esta categoría está cerrado."; return; }
+
         mensajeError = ""; mensajeExito = "";
 
         using var db = await DbFactory.CreateDbContextAsync();
@@ -785,7 +806,10 @@
                     AnioNacimiento = anioNacimientoNuevo
                 };
                 db.Atletas.Add(atleta);
-                await db.SaveChangesAsync();
+
+                try { await db.SaveChangesAsync(); }
+                catch (DbUpdateException) { mensajeError = "No se pudo registrar el atleta. Revisa el año de nacimiento."; return; }
+
             }
         }
 
@@ -818,6 +842,8 @@
 
     private async Task RegistrarPareja()
     {
+        if (categoriaActiva?.RegistroCerrado == true) {  mensajeError = "El registro de esta categoría está cerrado."; return; }
+
         mensajeError = ""; mensajeExito = "";
 
         using var db = await DbFactory.CreateDbContextAsync();
@@ -1028,6 +1054,32 @@
         </div>
     };
 
+    private async Task CerrarRegistro()
+    {
+        if (categoriaActiva == null) return;
+
+        bool confirmado = await JS.InvokeAsync<bool>("confirm",
+            "¿Cerrar el registro de esta categoría? Ya no se podrán agregar, quitar ni mover atletas (solo dar de baja si es necesario), y se generarán automaticamente los partidos que correspondan.");
+        if (!confirmado) return;
+
+        var (ok, msg) = await CalendarioSvc.CerrarRegistroAsync(categoriaActiva.Id);
+        mensajeError = ok ? "" : msg;
+        mensajeExito = ok ? msg : "";
+
+        await OnCategoriaSeleccionada();
+    }
+
+    private async Task ReabrirRegistro()
+    {
+        if (categoriaActiva == null) return;
+
+        var (ok, msg) = await CalendarioSvc.ReabrirRegistroAsync(categoriaActiva.Id);
+        mensajeError = ok ? "" : msg;
+        mensajeExito = ok ? msg : "";
+
+        await OnCategoriaSeleccionada();
+    }
+
     private async Task DarDeBaja(int competidorId, string nombre)
     {
         bool confirmado = await JS.InvokeAsync<bool>("confirm", $"¿Dar de baja a {nombre}?");
@@ -1041,6 +1093,8 @@
 
     private async Task EliminarCompetidor(int competidorId, string nombre)
     {
+        if (categoriaActiva?.RegistroCerrado == true) {  mensajeError = "El registro de esta categoría está cerrado."; return; }
+
         bool confirmado = await JS.InvokeAsync<bool>("confirm", $"¿Eliminar a {nombre} de esta categoria? Esta acción no se puede deshacer.");
         if (!confirmado) return;
 
@@ -1077,6 +1131,8 @@
 
     private async Task EliminarCategoriaActiva()
     {
+        if (categoriaActiva?.RegistroCerrado == true) {  mensajeError = "El registro de esta categoría está cerrado."; return; }
+
         mensajeError = ""; mensajeExito = "";
 
         bool confirmado = await JS.InvokeAsync<bool>("confirm",

@@ -19,6 +19,8 @@ public partial class Categoria
 
     public int? ClasificadosPorGrupo { get; set; }
 
+    public bool RegistroCerrado { get; set; }
+
     public virtual ICollection<Competidore> Competidores { get; set; } = new List<Competidore>();
 
     public virtual ICollection<Grupo> Grupos { get; set; } = new List<Grupo>();

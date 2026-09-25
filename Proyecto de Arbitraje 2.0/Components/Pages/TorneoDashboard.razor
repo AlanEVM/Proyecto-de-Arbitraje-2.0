@@ -167,9 +167,7 @@
                     return partidosGrupos + partidosFaseFinal;
                 }
             case "Eliminatoria":
-                return partidosFaseFinalReales > 0
-                    ? partidosFaseFinalReales
-                    : (totalActivos >= 2 ? totalActivos - 1 : 0);
+                return totalActivos >= 2 ? totalActivos - 1 : 0;
             case "RoundRobin":
                 return partidosRondaInicialReales > 0
                     ? partidosRondaInicialReales

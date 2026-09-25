@@ -150,6 +150,7 @@ app.MapGet("/login", (string? error, IAntiforgery antiforgery, HttpContext http)
                     <input type="password" name="password" required />
                 </div>
                 <button type="submit">Entrar</button>
+                <a href="/" style="display:block; text-align:center; margin-top:12px; color:#5B6B68; text-decoration:none;">Cancelar</a>
             </form>
         </div>
     </body>
