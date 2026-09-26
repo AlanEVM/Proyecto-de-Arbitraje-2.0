@@ -127,14 +127,6 @@
                                             </div>
                                         }
 
-                                        @if (c.Formato == "Jornadas")
-                                        {
-                                            <div class="campo" style="max-width:180px; margin-bottom:0;">
-                                                <label>Veces que se enfrentan todos</label>
-                                                <input type="number" min="1" @bind="editConfigNumeroVueltas" />
-                                            </div>
-                                        }
-
                                         @if (c.Formato == "Eliminatoria")
                                         {
                                             <div class="campo" style="max-width:150px; margin-bottom:0;">
@@ -220,10 +212,6 @@
                         <option value="Mixto">Mixto</option>
                     }
                 </select>
-                @if (nuevaCatModalidad == "Singles" && modalidadTorneo == "Jornadas")
-                {
-                    <p class="nota" style="margin-top:4px;"></p>
-                }
             </div>
             <div class="campo" style="max-width:190px;">
                 <label>Formato</label>
@@ -256,7 +244,6 @@
     private Dictionary<int, Configuracion> configPorCategoria = new();
     private int? categoriaEditandoConfigId;
     private string editConfigModalidadSets = "2 de 3 Sets";
-    private int? editConfigNumeroVueltas;
     private int? editConfigCantidadSembrados;
     private int editConfigClasificadosPorGrupo = 2;
 
@@ -481,7 +468,6 @@
         editConfigModalidadSets = cfg?.ModalidadSets ?? "2 de 3 Sets";
         editConfigPuntosJuego = cfg?.PuntosJuego ?? 21;
         editConfigPuntosLimite = cfg?.PuntosLimite ?? 30;
-        editConfigNumeroVueltas = cfg?.NumeroVueltas ?? 1;
         editConfigCantidadSembrados = cfg?.CantidadSembrados ?? 0;
         editConfigClasificadosPorGrupo = categoria.ClasificadosPorGrupo ?? 2;
         editConfigModalidadSetsFinal = cfg?.ModalidadSetsFinal ?? cfg?.ModalidadSets ?? "2 de 3 Sets";
@@ -520,12 +506,7 @@
         {
             partes.Add($"{editConfigModalidadSets}, a {editConfigPuntosJuego} puntos, tope {editConfigPuntosLimite}");
         }
-
-        if (formato == "Jornadas")
-        {
-            partes.Add($"Veces que se enfrentan todos: {editConfigNumeroVueltas}");
-        }
-        else if (formato == "Eliminatoria")
+        if (formato == "Eliminatoria")
         {
             partes.Add($"Sembrados: {editConfigCantidadSembrados}");
         }
@@ -565,7 +546,6 @@
             config.PuntosLimite = editConfigPuntosLimite;
         }
 
-        config.NumeroVueltas = editConfigNumeroVueltas;
         config.CantidadSembrados = editConfigCantidadSembrados;
         config.AnioNacimientoMin = editConfigEdadRestringida ? editConfigAnioMin : null;
         config.AnioNacimientoMax = editConfigEdadRestringida ? editConfigAnioMax : null;

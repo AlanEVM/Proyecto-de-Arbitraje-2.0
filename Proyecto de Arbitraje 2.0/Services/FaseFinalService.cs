@@ -967,10 +967,8 @@ public class FaseFinalService
         if (categoria == null) return (false, "Categoría no encontrada.");
         if (categoria.Formato != "Jornadas") return (false, "Esta opción es solo para categorías de formato Jornadas.");
 
-        var config = await db.Configuracions.FirstOrDefaultAsync(c => c.CategoriaId == categoriaId);
-        int vueltas = config?.NumeroVueltas ?? 1;
         int activos = await db.Competidores.CountAsync(c => c.CategoriaId == categoriaId && c.Activo);
-        int totalJornadasPlaneadas = CalendarioService.CalcularTotalJornadas(activos, vueltas);
+        int totalJornadasPlaneadas = CalendarioService.CalcularTotalJornadas(activos);
 
         int ultimaJornadaGenerada = await db.Partidos
             .Where(p => p.CategoriaId == categoriaId && p.Fase == "Liga")

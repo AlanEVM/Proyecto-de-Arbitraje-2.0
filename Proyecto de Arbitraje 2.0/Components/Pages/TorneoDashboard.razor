@@ -174,18 +174,8 @@
                     : (totalActivos >= 2 ? totalActivos * (totalActivos - 1) / 2 : 0);
             case "Jornadas":
                 {
-                    int vueltas = numeroVueltasConfigurado ?? 1;
-                    int partidosLiga = totalActivos >= 2 ? vueltas * totalActivos * (totalActivos - 1) / 2 : 0;
-
-                    if (totalActivos >= 2 && totalActivos % 2 == 1)
-                    {
-                        int totalRondas = vueltas * totalActivos;
-                        int totalJornadas = (int)Math.Ceiling(totalRondas / 2.0);
-                        partidosLiga += totalJornadas;
-                    }
-
-                    if (partidosRondaInicialReales > 0)
-                        partidosLiga = partidosRondaInicialReales;
+                    const int vueltasFijas = 2;
+                    int partidosLiga = totalActivos >= 2 ? vueltasFijas * totalActivos * (totalActivos - 1) / 2 : 0;
 
                     int numBandas = totalActivos / 4;
                     int partidosBandas = partidosFaseFinalReales > 0 ? partidosFaseFinalReales : numBandas * 3;
@@ -247,14 +237,10 @@
                 }
             }
 
-            int? numVueltasCfg = cat.Formato == "Jornadas"
-                ? (await db.Configuracions.FirstOrDefaultAsync(c => c.CategoriaId == cat.Id))?.NumeroVueltas
-                : null;
-
             int partidosRondaInicialReales = await db.Partidos.CountAsync(p => p.CategoriaId == cat.Id && (p.Fase == "Grupos" || p.Fase == "Liga"));
             int partidosFaseFinalReales = await db.Partidos.CountAsync(p => p.CategoriaId == cat.Id && p.Fase != "Grupos" && p.Fase != "Liga");
 
-            r.PartidosTotal = CalcularPartidosProyectados(cat, conteosPorGrupo, totalActivos, numVueltasCfg, partidosRondaInicialReales, partidosFaseFinalReales);
+            r.PartidosTotal = CalcularPartidosProyectados(cat, conteosPorGrupo, totalActivos, null, partidosRondaInicialReales, partidosFaseFinalReales);
             r.PartidosJugados = await db.Partidos.CountAsync(p => p.CategoriaId == cat.Id && p.Estado == "Jugado");
 
             if (cat.Formato == "Jornadas" || cat.Formato == "RoundRobin")

@@ -173,66 +173,29 @@ public class CalendarioService
         return generados;
     }
 
-    public static int CalcularTotalJornadas(int totalCompetidores, int vueltas)
+    // A partir de ahora cada categoría de Jornadas SIEMPRE enfrenta a todos
+    // 2 veces (ida y vuelta), sin importar la configuración anterior.
+    private const int VueltasFijas = 2;
+
+    public static int CalcularTotalJornadas(int totalCompetidores, int vueltasIgnorado = 0)
     {
         if (totalCompetidores < 2) return 0;
         var idsFalsos = Enumerable.Range(1, totalCompetidores).ToList();
         var rondasBase = GenerarRondasRoundRobin(idsFalsos);
-        int totalRondas = rondasBase.Count * Math.Max(1, vueltas);
-        return (int)Math.Ceiling(totalRondas / 2.0);
+        return rondasBase.Count * VueltasFijas;
     }
 
-    private static List<List<(int a, int b)>> ArmarJornadas(List<int> ids, int vueltas)
+    private static List<List<(int a, int b)>> ArmarJornadas(List<int> ids, int vueltasIgnorado = 0)
     {
         var rondasBase = GenerarRondasRoundRobin(ids);
         var todasLasRondas = new List<List<(int a, int b)>>();
 
-        for (int v = 0; v < Math.Max(1, vueltas); v++)
+        for (int v = 0; v < VueltasFijas; v++)
             todasLasRondas.AddRange(rondasBase);
 
-        var jornadas = new List<List<(int a, int b)>>();
-        for (int i = 0; i < todasLasRondas.Count; i += 2)
-        {
-            var combinada = new List<(int a, int b)>(todasLasRondas[i]);
-            if (i + 1 < todasLasRondas.Count)
-                combinada.AddRange(todasLasRondas[i + 1]);
-
-            BalancearPartidosCortos(combinada, ids);
-
-            jornadas.Add(combinada);
-        }
-
-        return jornadas;
-    }
-
-    private static void BalancearPartidosCortos(List<(int a, int b)> combinada, List<int> idsCategoria)
-    {
-        if (combinada.Count == 0) return;
-
-        var conteo = idsCategoria.ToDictionary(id => id, id => 0);
-        foreach (var (a, b) in combinada)
-        {
-            conteo[a]++;
-            conteo[b]++;
-        }
-
-        int objetivo = conteo.Values.Max();
-        var cortos = conteo.Where(kv => kv.Value < objetivo).Select(kv => kv.Key).ToList();
-
-        while (cortos.Count >= 2)
-        {
-            int a = cortos[0];
-            int b = cortos[1];
-            cortos.RemoveRange(0, 2);
-            combinada.Add((a, b));
-        }
-
-        if (cortos.Count == 1)
-        {
-            int corto = cortos[0];
-            int companero = idsCategoria.First(id => id != corto);
-            combinada.Add((corto, companero));
-        }
+        // Cada ronda del método del círculo YA es una jornada completa:
+        // un partido por niño activo, con descanso rotativo si son non.
+        return todasLasRondas;
     }
 
     public async Task<(bool ok, string mensaje, int totalJornadas)> GenerarSiguienteJornadaAsync(int categoriaId)

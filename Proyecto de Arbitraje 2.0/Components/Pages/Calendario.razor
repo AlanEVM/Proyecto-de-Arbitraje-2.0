@@ -468,6 +468,9 @@ else
 
     private async Task GenerarJornada(int categoriaId)
     {
+        bool confirmado = await JS.InvokeAsync<bool>("confirm", "¿Estás seguro de que quieres generar esta jornada?");
+        if (!confirmado) return;
+
         var (ok, msg, total) = await CalendarioSvc.GenerarSiguienteJornadaAsync(categoriaId);
         MostrarMensaje(msg, ok);
         await CargarProgresoJornadasAsync();
@@ -593,9 +596,8 @@ else
         progresoJornadasPorCategoria.Clear();
         foreach (var catId in idsJornadas)
         {
-            int vueltas = (await db.Configuracions.FirstOrDefaultAsync(c => c.CategoriaId == catId))?.NumeroVueltas ?? 1;
             int activos = await db.Competidores.CountAsync(c => c.CategoriaId == catId && c.Activo);
-            int totalJornadas = CalendarioService.CalcularTotalJornadas(activos, vueltas);
+            int totalJornadas = CalendarioService.CalcularTotalJornadas(activos);
             int ultimaGenerada = await db.Partidos
                 .Where(p => p.CategoriaId == catId && p.Fase == "Liga")
                 .Select(p => (int?)p.Jornada)
