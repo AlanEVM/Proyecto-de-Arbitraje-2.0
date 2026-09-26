@@ -1,0 +1,41 @@
+name: Deploy a AWS Elastic Beanstalk
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout del código
+        uses: actions/checkout@v4
+
+      - name: Configurar .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restaurar dependencias
+        run: dotnet restore
+
+      - name: Publicar la app (Release, framework-dependent, igual que en Visual Studio)
+        run: dotnet publish -c Release -o ./publish "Proyecto de Arbitraje 2.0/Proyecto de Arbitraje 2.0.csproj"
+
+      - name: Comprimir el paquete de despliegue
+        run: |
+          cd publish
+          zip -r ../deploy.zip . -x "*.pdb"
+
+      - name: Desplegar a Elastic Beanstalk
+        uses: einaregilsson/beanstalk-deploy@v22
+        with:
+          aws_access_key: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws_secret_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          application_name: TorneoBadminton
+          environment_name: TorneoBadminton-prod
+          version_label: "gh-${{ github.run_number }}"
+          region: us-east-2
+          deployment_package: deploy.zip
+          use_existing_version_if_available: false
