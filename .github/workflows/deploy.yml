@@ -21,7 +21,7 @@ jobs:
         run: dotnet restore
 
       - name: Publicar la app (Release, framework-dependent, igual que en Visual Studio)
-        run: dotnet publish -c Release -o ./publish $(find . -name "*.csproj" | head -n 1)
+        run: dotnet publish -c Release -o ./publish "Proyecto de Arbitraje 2.0/Proyecto de Arbitraje 2.0.csproj"
 
       - name: Comprimir el paquete de despliegue
         run: |
