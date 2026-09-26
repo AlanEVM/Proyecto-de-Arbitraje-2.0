@@ -23,6 +23,12 @@ jobs:
       - name: Publicar la app (Release, framework-dependent, igual que en Visual Studio)
         run: dotnet publish -c Release -o ./publish "Proyecto de Arbitraje 2.0/Proyecto de Arbitraje 2.0.csproj"
 
+      - name: Incluir la carpeta .platform en el paquete (nginx, config de EB, etc.)
+        run: |
+          if [ -d ".platform" ]; then
+            cp -r .platform ./publish/.platform
+          fi
+
       - name: Comprimir el paquete de despliegue
         run: |
           cd publish
