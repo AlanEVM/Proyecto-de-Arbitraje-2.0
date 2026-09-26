@@ -50,11 +50,23 @@ public partial class TorneoContext : DbContext
 
     public virtual DbSet<Torneo> Torneos { get; set; }
 
-    public virtual DbSet<Usuario> Usuarios { get; set; } 
+    public virtual DbSet<Usuario> Usuarios { get; set; }
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
-#warning To protect potentially sensitive information in your connection string, you should move it out of source code. You can avoid scaffolding the connection string by using the Name= syntax to read it from configuration - see https://go.microsoft.com/fwlink/?linkid=2131148. For more guidance on storing connection strings, see https://go.microsoft.com/fwlink/?LinkId=723263.
-        => optionsBuilder.UseSqlServer("Server=localhost\\SQLEXPRESS;Database=TorneoBadminton;Trusted_Connection=True;TrustServerCertificate=True;");
+    {
+        // IMPORTANTE: este "if" evita que la conexión local de abajo
+        // sobreescriba la cadena de conexión real que Program.cs configura
+        // vía AddDbContextFactory + appsettings/variables de entorno.
+        // Sin este "if", la app SIEMPRE intentaría usar SQLEXPRESS local,
+        // incluso ya desplegada en AWS.
+        // Este fallback solo se usa si ejecutas "dotnet ef" directo desde
+        // la carpeta del proyecto (herramientas de diseño) sin pasar por
+        // Program.cs.
+        if (!optionsBuilder.IsConfigured)
+        {
+            optionsBuilder.UseSqlServer("Server=localhost\\SQLEXPRESS;Database=TorneoBadminton;Trusted_Connection=True;TrustServerCertificate=True;");
+        }
+    }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
