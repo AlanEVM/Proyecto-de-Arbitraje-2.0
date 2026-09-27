@@ -103,6 +103,30 @@
                             }
                         </div>
                     }
+                    else if (cat.Formato == "Jornadas")
+                    {
+                        <table class="tabla-limpia">
+                            <thead>
+                                <tr>
+                                    <th>Nombre</th>
+                                    <th>Género</th>
+                                    <th>Año de Nacimiento</th>
+                                    <th>Estado</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var at1 in competidoresCat)
+                                {
+                                    <tr>
+                                        <td>@at1.NombreAtleta</td>
+                                        <td>@at1.NombreGenero</td>
+                                        <td>@at1.NombreAnioNacimiento</td>
+                                        <td><span class="badge @(at1.Activo ? "badge-jugado" : "badge-baja")">@(at1.Activo ? "Activo" : "Baja")</span></td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    }
                     else
                     {
                         <table class="tabla-limpia">
@@ -140,6 +164,8 @@
         public int CategoriaId { get; set; }
         public string NombreAtleta { get; set; } = "";
         public string NombreMunicipio { get; set; } = "";
+        public string NombreGenero { get; set; } = "";
+        public string NombreAnioNacimiento { get; set; } = "";
         public string? Letra { get; set; }
         public bool Activo { get; set; }
     }
@@ -163,19 +189,23 @@
                 Integrantes = c.CompetidorIntegrantes.Select(ci => new
                 {
                     ci.Atleta.Nombre,
-                    MunicipioNombre = ci.Atleta.Municipio.Nombre
+                    MunicipioNombre = ci.Atleta.Municipio.Nombre,
+                    ci.Atleta.Genero,
+                    ci.Atleta.AnioNacimiento
                 }).ToList()
             })
             .ToListAsync();
 
         todos = datos.Select(d => new CompetidorFila
-            {
-                CategoriaId = d.CategoriaId,
-                NombreAtleta = string.Join(" / ", d.Integrantes.Select(i => i.Nombre)),
-                NombreMunicipio = string.Join(" / ", d.Integrantes.Select(i => i.MunicipioNombre)),
-                Letra = d.GrupoLetra,
-                Activo = d.Activo
-            }).ToList();
+        {
+            CategoriaId = d.CategoriaId,
+            NombreAtleta = string.Join(" / ", d.Integrantes.Select(i => i.Nombre)),
+            NombreMunicipio = string.Join(" / ", d.Integrantes.Select(i => i.MunicipioNombre)),
+            NombreGenero = string.Join(" / ", d.Integrantes.Select(i => i.Genero == "M" ? "Masculino" : i.Genero == "F" ? "Femenino" : "-")),
+            NombreAnioNacimiento = string.Join(" / ", d.Integrantes.Select(i => i.AnioNacimiento != null ? i.AnioNacimiento.ToString() : "-")),
+            Letra = d.GrupoLetra,
+            Activo = d.Activo
+        }).ToList();
     }
 }
 
