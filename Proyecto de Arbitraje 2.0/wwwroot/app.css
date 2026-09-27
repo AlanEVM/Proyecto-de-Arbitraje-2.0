@@ -144,6 +144,17 @@ h1:focus {
         background-color: rgba(255, 255, 255, 0.15);
     }
 
+.menu-hamburguesa {
+    display: none;
+    background: none;
+    border: none;
+    color: white;
+    font-size: 1.5em;
+    line-height: 1;
+    cursor: pointer;
+    padding: 4px 10px;
+}
+
 .topbar-side {
     flex: 1;
     display: flex;
@@ -747,7 +758,12 @@ h1:focus {
     justify-content: space-between;
     align-items: flex-start;
     gap: 12px;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+}
+
+.partido-card-info {
+    flex: 1 1 auto;
+    min-width: 0;
 }
 
 .partido-meta {
@@ -772,6 +788,8 @@ h1:focus {
 .partido-acciones-grid {
     display: flex;
     gap: 10px;
+    flex: 0 0 auto;
+    max-width: 260px;
 }
 
 .partido-acciones-col {
@@ -1377,6 +1395,70 @@ h1:focus {
     .pp-centro {
         padding-top: 38px;
     }
+
+    .menu-hamburguesa {
+        display: inline-block;
+    }
+
+    .topbar {
+        flex-wrap: wrap;
+    }
+
+    .topbar-side-right {
+        display: none;
+        order: 3;
+        flex: 1 1 100%;
+    }
+
+        .topbar-side-right.menu-movil-abierto {
+            display: flex;
+            flex-direction: column;
+            align-items: stretch;
+            width: 100%;
+            margin-top: 10px;
+            overflow-x: visible;
+        }
+
+    .subbar {
+        display: none;
+    }
+
+        .subbar.menu-movil-abierto {
+            display: flex;
+            flex-direction: column;
+            align-items: stretch;
+            overflow-x: visible;
+        }
+
+            .subbar.menu-movil-abierto .topbar-link {
+                white-space: normal;
+            }
+
+    .partido-card-top {
+        flex-wrap: nowrap;
+        gap: 8px;
+    }
+
+    .partido-nombres {
+        font-size: 1rem;
+    }
+
+    .partido-meta {
+        font-size: 0.78rem;
+    }
+
+    .partido-acciones-grid {
+        flex-direction: column;
+        max-width: 100px;
+        gap: 6px;
+    }
+
+        .partido-acciones-grid .btn {
+            font-size: 0.75rem;
+            padding: 6px 8px;
+            white-space: normal;
+            text-align: center;
+        }
 }
 
 /* =====================================================================

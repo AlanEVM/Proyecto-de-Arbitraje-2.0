@@ -3,9 +3,12 @@
 @implements IDisposable
 
 @code {
+    private bool menuMovilAbierto = false;
+
     protected override void OnInitialized()
     {
         TorneoActual.OnCambio += Refrescar;
+        Nav.LocationChanged += CerrarAlNavegar;
     }
 
     private void Refrescar()
@@ -13,26 +16,41 @@
         InvokeAsync(StateHasChanged);
     }
 
+    private void CerrarAlNavegar(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+    {
+        if (menuMovilAbierto)
+        {
+            menuMovilAbierto = false;
+            InvokeAsync(StateHasChanged);
+        }
+    }
+
     public void Dispose()
     {
         TorneoActual.OnCambio -= Refrescar;
+        Nav.LocationChanged -= CerrarAlNavegar;
+    }
+
+    private void AlternarMenuMovil()
+    {
+        menuMovilAbierto = !menuMovilAbierto;
     }
 
     private void IrAInicio()
     {
+        menuMovilAbierto = false;
         TorneoActual.SalirDelTorneo();
         Nav.NavigateTo("/");
     }
 }
 
 <div class="topbar">
-    <div class="topbar-side">
-        <a class="topbar-link" href="" @onclick="IrAInicio" @onclick:preventDefault="true">Inicio</a>
-    </div>
+    <button class="menu-hamburguesa" @onclick="AlternarMenuMovil" aria-label="Abrir menú">☰</button>
 
     <div class="topbar-brand">Gestión de Arbitraje</div>
 
-    <div class="topbar-side topbar-side-right">
+    <div class="topbar-side topbar-side-right @(menuMovilAbierto ? "menu-movil-abierto" : "")">
+        <a class="topbar-link" href="" @onclick="IrAInicio" @onclick:preventDefault="true">Inicio</a>
         <AuthorizeView Context="sesion">
             <Authorized>
                 @if (TorneoActual.TorneoId == null)
@@ -81,7 +99,7 @@
 
 @if (TorneoActual.TorneoId != null)
 {
-    <div class="subbar">
+    <div class="subbar @(menuMovilAbierto ? "menu-movil-abierto" : "")">
         <AuthorizeView Roles="Admin" Context="rolSubAdmin1">
             <Authorized>
                 <NavLink class="topbar-link" href="torneo-dashboard">Panel</NavLink>

@@ -230,16 +230,6 @@ public class CalendarioService
         if (ultimaJornadaGenerada >= totalJornadas)
             return (false, "Ya se generaron todas las jornadas configuradas.", totalJornadas);
 
-        if (ultimaJornadaGenerada > 0)
-        {
-            bool faltanPartidos = await db.Partidos.AnyAsync(p =>
-                p.CategoriaId == categoriaId && p.Fase == "Liga" &&
-                p.Jornada == ultimaJornadaGenerada && p.Estado != "Jugado");
-
-            if (faltanPartidos)
-                return (false, $"Todavía hay partidos sin jugar en la Jornada {ultimaJornadaGenerada}. Termínala antes de generar la siguiente.", totalJornadas);
-        }
-
         int siguienteJornada = ultimaJornadaGenerada + 1;
         var partidosJornada = jornadas[siguienteJornada - 1];
 
