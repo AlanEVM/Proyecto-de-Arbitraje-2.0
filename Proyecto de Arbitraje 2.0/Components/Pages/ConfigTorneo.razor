@@ -1,5 +1,5 @@
 ﻿@page "/config-torneo"
-@attribute [Authorize(Roles = "Admin")]
+@attribute [Authorize(Roles = "Admin,Organizador")]
 @using Microsoft.AspNetCore.Authorization
 @using ProyectoArbitraje.Data
 @using ProyectoArbitraje.Models
@@ -369,9 +369,12 @@
         {
             await db.SaveChangesAsync();
         }
-        catch (DbUpdateException)
+        catch (DbUpdateException ex)
         {
-            mensaje = "Ya existe una categoría idéntica en este torneo.";
+            var detalle = ex.InnerException?.Message ?? ex.Message;
+            mensaje = detalle.Contains("UQ_Categoria")
+                ? "Ya existe una categoría idéntica en este torneo."
+                : $"No se pudo guardar la categoría: {detalle}";
             return;
         }
 

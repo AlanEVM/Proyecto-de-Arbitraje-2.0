@@ -52,6 +52,8 @@ public partial class TorneoContext : DbContext
 
     public virtual DbSet<Usuario> Usuarios { get; set; }
 
+    public virtual DbSet<RespaldoS3> RespaldosS3 { get; set; }
+
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
         // IMPORTANTE: este "if" evita que la conexión local de abajo
@@ -376,6 +378,15 @@ public partial class TorneoContext : DbContext
             entity.HasIndex(e => e.NombreUsuario).IsUnique();
             entity.Property(e => e.NombreUsuario).HasMaxLength(50);
             entity.Property(e => e.Rol).HasMaxLength(20);
+        });
+
+        modelBuilder.Entity<RespaldoS3>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.ToTable("RespaldosS3");
+            entity.Property(e => e.NombreArchivo).HasMaxLength(200);
+            entity.Property(e => e.S3Arn).HasMaxLength(500);
+            entity.Property(e => e.Estado).HasMaxLength(20);
         });
 
         OnModelCreatingPartial(modelBuilder);

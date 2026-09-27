@@ -200,9 +200,10 @@ h1:focus {
     z-index: 10;
 }
 
-.dropdown:hover .dropdown-menu {
-    display: block;
-}
+    .dropdown:hover .dropdown-menu,
+    .dropdown-menu.abierto {
+        display: block;
+    }
 
 .dropdown-menu a {
     display: block;
@@ -1459,7 +1460,17 @@ h1:focus {
             white-space: normal;
             text-align: center;
         }
-}
+
+    .dropdown-menu {
+        position: static;
+        right: auto;
+        top: auto;
+        box-shadow: none;
+        border: 1px solid var(--linea);
+        margin-top: 6px;
+        width: 100%;
+    }
+}}
 
 /* =====================================================================
    IMPRESIÓN DEL BRACKET

@@ -4,6 +4,12 @@
 
 @code {
     private bool menuMovilAbierto = false;
+    private bool menuUsuarioAbierto = false;
+
+    private void AlternarMenuUsuario()
+    {
+        menuUsuarioAbierto = !menuUsuarioAbierto;
+    }
 
     protected override void OnInitialized()
     {
@@ -18,9 +24,10 @@
 
     private void CerrarAlNavegar(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
     {
-        if (menuMovilAbierto)
+        if (menuMovilAbierto || menuUsuarioAbierto)
         {
             menuMovilAbierto = false;
+            menuUsuarioAbierto = false;
             InvokeAsync(StateHasChanged);
         }
     }
@@ -55,7 +62,7 @@
             <Authorized>
                 @if (TorneoActual.TorneoId == null)
                 {
-                    <AuthorizeView Roles="Admin" Context="rolTorneos">
+                    <AuthorizeView Roles="Admin,Organizador" Context="rolTorneos">
                         <Authorized>
                             <NavLink class="topbar-link" href="torneos">Torneos</NavLink>
                         </Authorized>
@@ -66,7 +73,7 @@
                 }
                 else
                 {
-                    <AuthorizeView Roles="Admin" Context="rolPosRep">
+                    <AuthorizeView Roles="Admin,Organizador" Context="rolPosRep">
                         <Authorized>
                             <NavLink class="topbar-link" href="posiciones">Posiciones</NavLink>
                             <NavLink class="topbar-link" href="reporte">Reporte</NavLink>
@@ -74,8 +81,8 @@
                     </AuthorizeView>
                 }
                 <div class="dropdown">
-                    <span class="topbar-link">@(sesion.User.Identity?.Name ?? "Usuario") ▾</span>
-                    <div class="dropdown-menu">
+                    <span class="topbar-link" @onclick="AlternarMenuUsuario">@(sesion.User.Identity?.Name ?? "Usuario") ▾</span>
+                    <div class="dropdown-menu @(menuUsuarioAbierto ? "abierto" : "")">
                         <AuthorizeView Roles="Admin" Context="rolMenuUsuario">
                             <Authorized>
                                 <a href="ranking">Ranking</a>
@@ -100,7 +107,7 @@
 @if (TorneoActual.TorneoId != null)
 {
     <div class="subbar @(menuMovilAbierto ? "menu-movil-abierto" : "")">
-        <AuthorizeView Roles="Admin" Context="rolSubAdmin1">
+        <AuthorizeView Roles="Admin,Organizador" Context="rolSubAdmin1">
             <Authorized>
                 <NavLink class="topbar-link" href="torneo-dashboard">Panel</NavLink>
                 <NavLink class="topbar-link" href="config-torneo">Categorías</NavLink>

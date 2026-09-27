@@ -104,6 +104,6 @@
         TorneoActual.EntrarATorneo(t.Id, t.Nombre, t.CanchasConfirmadas);
 
         var authState = await AuthStateProvider.GetAuthenticationStateAsync();
-        Nav.NavigateTo(authState.User.IsInRole("Admin") ? "/torneo-dashboard" : "/calendario");
+        Nav.NavigateTo((authState.User.IsInRole("Admin") || authState.User.IsInRole("Organizador")) ? "/torneo-dashboard" : "/calendario");
     }
 }

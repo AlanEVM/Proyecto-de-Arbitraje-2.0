@@ -1,5 +1,5 @@
 ﻿@page "/torneo-dashboard"
-@attribute [Authorize(Roles = "Admin")]
+@attribute [Authorize(Roles = "Admin,Organizador")]
 @using Microsoft.AspNetCore.Authorization
 @using ProyectoArbitraje.Data
 @using ProyectoArbitraje.Models

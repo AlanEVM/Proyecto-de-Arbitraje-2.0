@@ -190,7 +190,7 @@
     protected override async Task OnInitializedAsync()
     {
         var authState = await AuthStateProvider.GetAuthenticationStateAsync();
-        esSoloLectura = !authState.User.IsInRole("Admin");
+        esSoloLectura = !(authState.User.IsInRole("Admin") || authState.User.IsInRole("Organizador"));
 
         await CargarCanchas();
     }
