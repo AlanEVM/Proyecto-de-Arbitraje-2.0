@@ -844,10 +844,22 @@
             }
 
             var existente = await db.Atletas.FirstOrDefaultAsync(a =>
-                a.Nombre == nuevoNombreAtleta.Trim() && a.MunicipioId == municipioSeleccionadoId);
+    a.Nombre == nuevoNombreAtleta.Trim() && a.MunicipioId == municipioSeleccionadoId);
 
             if (existente != null)
             {
+                // Ya existía alguien con ese nombre + municipio. En vez de
+                // dejar su Género/Año de nacimiento viejos (que pudieron
+                // haberse guardado mal antes), los actualizamos con lo que
+                // se acaba de capturar en el formulario ahora mismo.
+                string? nuevoGenero = string.IsNullOrEmpty(generoSeleccionado) ? null : generoSeleccionado;
+                if (existente.Genero != nuevoGenero || existente.AnioNacimiento != anioNacimientoNuevo)
+                {
+                    existente.Genero = nuevoGenero;
+                    existente.AnioNacimiento = anioNacimientoNuevo;
+                    await db.SaveChangesAsync();
+                }
+
                 atleta = existente;
             }
             else
