@@ -813,6 +813,64 @@ public class CalendarioService
         }).ToList();
     }
 
+    public async Task<List<PartidoQueueItem>> ObtenerPartidosDeJornadaAsync(int categoriaId, int jornada)
+    {
+        using var db = await _factory.CreateDbContextAsync();
+
+        var partidos = await db.Partidos
+            .Include(p => p.CompetidorA).ThenInclude(c => c.CompetidorIntegrantes).ThenInclude(ci => ci.Atleta)
+            .Include(p => p.CompetidorB).ThenInclude(c => c.CompetidorIntegrantes).ThenInclude(ci => ci.Atleta)
+            .Include(p => p.SetsPartidos)
+            .Where(p => p.CategoriaId == categoriaId && p.Fase == "Liga" && p.Jornada == jornada)
+            .OrderBy(p => p.Id)
+            .ToListAsync();
+
+        return partidos.Select(p => new PartidoQueueItem
+        {
+            Partido = p,
+            NombreA = string.Join(" / ", p.CompetidorA.CompetidorIntegrantes.Select(ci => ci.Atleta.Nombre)),
+            NombreB = string.Join(" / ", p.CompetidorB.CompetidorIntegrantes.Select(ci => ci.Atleta.Nombre))
+        }).ToList();
+    }
+
+    public async Task<string?> ObtenerAtletaQueDescansaAsync(int categoriaId, int jornada)
+    {
+        using var db = await _factory.CreateDbContextAsync();
+
+        var activos = await db.Competidores
+            .Where(c => c.CategoriaId == categoriaId && c.Activo)
+            .Include(c => c.CompetidorIntegrantes).ThenInclude(ci => ci.Atleta)
+            .ToListAsync();
+
+        var idsEnJornada = (await db.Partidos
+            .Where(p => p.CategoriaId == categoriaId && p.Fase == "Liga" && p.Jornada == jornada)
+            .Select(p => new { p.CompetidorAid, p.CompetidorBid })
+            .ToListAsync())
+            .SelectMany(p => new[] { p.CompetidorAid, p.CompetidorBid })
+            .ToHashSet();
+
+        var descansa = activos.FirstOrDefault(c => !idsEnJornada.Contains(c.Id));
+        return descansa == null ? null : string.Join(" / ", descansa.CompetidorIntegrantes.Select(ci => ci.Atleta.Nombre));
+    }
+
+    public async Task<(bool ok, string mensaje)> ActivarPartidoSinCanchaAsync(int partidoId)
+    {
+        using var db = await _factory.CreateDbContextAsync();
+
+        var partido = await db.Partidos.FindAsync(partidoId);
+        if (partido == null) return (false, "Partido no encontrado.");
+        if (partido.Estado == "Jugado") return (false, "Este partido ya fue jugado.");
+
+        if (partido.Estado == "Pendiente")
+        {
+            partido.Estado = "EnCancha";
+            await db.SaveChangesAsync();
+            _eventBus.Notificar();
+        }
+
+        return (true, "Ok");
+    }
+
     public async Task<(bool ok, string mensaje)> ActivarPartidoAsync(int partidoId, int torneoId)
     {
         using var db = await _factory.CreateDbContextAsync();

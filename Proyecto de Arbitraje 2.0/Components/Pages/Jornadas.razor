@@ -1,0 +1,200 @@
+﻿@page "/jornadas"
+@implements IDisposable
+@using ProyectoArbitraje.Data
+@using ProyectoArbitraje.Models
+@using ProyectoArbitraje.Services
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<TorneoContext> DbFactory
+@inject TorneoActualService TorneoActual
+@inject CalendarioService CalendarioSvc
+@inject TorneoEventBus EventBus
+@inject IJSRuntime JS
+@inject NavigationManager Navigation
+
+<PageTitle>Jornadas</PageTitle>
+
+@if (TorneoActual.TorneoId == null)
+{
+    <p class="vacio">Primero selecciona un torneo.</p>
+}
+else
+{
+    <div class="pagina">
+        <div class="tarjeta-marcador pagina-header">
+            <h1>Jornadas</h1>
+            <p class="pagina-subtitulo">Elige una categoría para generar y capturar sus jornadas.</p>
+        </div>
+
+        <div class="tarjeta">
+            <div class="campo" style="max-width:420px;">
+                <label>Categoría</label>
+                <select value="@categoriaSeleccionadaId" @onchange="SeleccionarCategoria">
+                    <option value="0">-- Selecciona --</option>
+                    @foreach (var c in categorias)
+                    {
+                        <option value="@c.Id">@c.Nombre (@c.Modalidad · @c.Rama)</option>
+                    }
+                </select>
+            </div>
+        </div>
+
+        @if (categoriaSeleccionadaId != 0)
+        {
+            <div class="tarjeta">
+                @if (ultimaJornada >= totalJornadas)
+                {
+                    <p class="nota">Ya se generaron todas las jornadas de esta categoría (@totalJornadas de @totalJornadas).</p>
+                }
+                else
+                {
+                    <button class="btn btn-primary" @onclick="GenerarJornada">Generar Jornada @(ultimaJornada + 1) de @totalJornadas</button>
+                }
+
+                @if (!string.IsNullOrEmpty(mensaje))
+                {
+                    <p class="@(esExito ? "mensaje-exito" : "mensaje-error")">@mensaje</p>
+                }
+            </div>
+
+            @if (ultimaJornada > 0)
+            {
+                <div class="tarjeta">
+                    <h2>Jornada @ultimaJornada</h2>
+
+                    @if (!partidosJornada.Any())
+                    {
+                        <p class="vacio">Sin partidos.</p>
+                    }
+                    else
+                    {
+                        @foreach (var item in partidosJornada)
+                        {
+                            bool jugado = item.Partido.Estado == "Jugado";
+                            <div class="partido-card @(jugado ? "jugado" : "")">
+                                <div class="partido-card-top">
+                                    <div class="partido-card-info">
+                                        <div class="partido-nombres"><strong>@item.NombreA</strong> vs <strong>@item.NombreB</strong></div>
+                                        @if (jugado)
+                                        {
+                                            var sets = item.Partido.SetsPartidos.OrderBy(s => s.NumeroSet).ToList();
+                                            <div class="partido-meta">@string.Join(" · ", sets.Select(s => $"{s.PuntosA}-{s.PuntosB}"))</div>
+                                        }
+                                    </div>
+                                    <div class="partido-acciones-grid">
+                                        @if (!jugado)
+                                        {
+                                            <button class="btn btn-primary" @onclick="() => Capturar(item.Partido.Id)">Capturar</button>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge badge-jugado">Jugado</span>
+                                        }
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    }
+
+                    @if (!string.IsNullOrEmpty(atletaDescansa))
+                    {
+                        <p class="nota" style="margin-top:14px;">Descansa esta jornada: <strong>@atletaDescansa</strong></p>
+                    }
+                </div>
+            }
+        }
+    </div>
+}
+
+@code {
+    private List<Categoria> categorias = new();
+    private int categoriaSeleccionadaId = 0;
+    private int ultimaJornada = 0;
+    private int totalJornadas = 0;
+    private List<PartidoQueueItem> partidosJornada = new();
+    private string? atletaDescansa;
+    private string mensaje = "";
+    private bool esExito;
+
+    protected override async Task OnInitializedAsync()
+    {
+        EventBus.OnCambio += Refrescar;
+        await CargarCategorias();
+    }
+
+    private void Refrescar()
+    {
+        InvokeAsync(async () =>
+        {
+            if (categoriaSeleccionadaId != 0) await CargarJornadaActual();
+            StateHasChanged();
+        });
+    }
+
+    public void Dispose()
+    {
+        EventBus.OnCambio -= Refrescar;
+    }
+
+    private async Task CargarCategorias()
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        categorias = await db.Categorias
+            .Where(c => c.TorneoId == TorneoActual.TorneoId && c.Formato == "Jornadas")
+            .OrderBy(c => c.Nombre)
+            .ToListAsync();
+    }
+
+    private async Task SeleccionarCategoria(ChangeEventArgs e)
+    {
+        categoriaSeleccionadaId = int.TryParse(e.Value?.ToString(), out var id) ? id : 0;
+        mensaje = "";
+        if (categoriaSeleccionadaId != 0) await CargarJornadaActual();
+    }
+
+    private async Task CargarJornadaActual()
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+
+        int activos = await db.Competidores.CountAsync(c => c.CategoriaId == categoriaSeleccionadaId && c.Activo);
+        totalJornadas = CalendarioService.CalcularTotalJornadas(activos);
+
+        ultimaJornada = await db.Partidos
+            .Where(p => p.CategoriaId == categoriaSeleccionadaId && p.Fase == "Liga")
+            .Select(p => (int?)p.Jornada)
+            .MaxAsync() ?? 0;
+
+        if (ultimaJornada > 0)
+        {
+            partidosJornada = await CalendarioSvc.ObtenerPartidosDeJornadaAsync(categoriaSeleccionadaId, ultimaJornada);
+            atletaDescansa = await CalendarioSvc.ObtenerAtletaQueDescansaAsync(categoriaSeleccionadaId, ultimaJornada);
+        }
+        else
+        {
+            partidosJornada.Clear();
+            atletaDescansa = null;
+        }
+    }
+
+    private async Task GenerarJornada()
+    {
+        bool confirmado = await JS.InvokeAsync<bool>("confirm", "¿Estás seguro de que quieres generar esta jornada?");
+        if (!confirmado) return;
+
+        var (ok, msg, _) = await CalendarioSvc.GenerarSiguienteJornadaAsync(categoriaSeleccionadaId);
+        mensaje = msg;
+        esExito = ok;
+        await CargarJornadaActual();
+    }
+
+    private async Task Capturar(int partidoId)
+    {
+        var (ok, msg) = await CalendarioSvc.ActivarPartidoSinCanchaAsync(partidoId);
+        if (!ok)
+        {
+            mensaje = msg;
+            esExito = false;
+            return;
+        }
+        Navigation.NavigateTo($"/fasefinal/punto-punto/{partidoId}");
+    }
+}

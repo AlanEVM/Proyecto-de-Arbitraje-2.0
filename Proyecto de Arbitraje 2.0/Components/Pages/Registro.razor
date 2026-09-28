@@ -843,39 +843,69 @@
                 return;
             }
 
+            string nombreFinalAtleta = nuevoNombreAtleta.Trim();
+            string? generoFinalAtleta = string.IsNullOrEmpty(generoSeleccionado) ? null : generoSeleccionado;
+
             var existente = await db.Atletas.FirstOrDefaultAsync(a =>
-    a.Nombre == nuevoNombreAtleta.Trim() && a.MunicipioId == municipioSeleccionadoId);
+                a.Nombre == nombreFinalAtleta && a.MunicipioId == municipioSeleccionadoId && a.AnioNacimiento == anioNacimientoNuevo);
 
-            if (existente != null)
-            {
-                // Ya existía alguien con ese nombre + municipio. En vez de
-                // dejar su Género/Año de nacimiento viejos (que pudieron
-                // haberse guardado mal antes), los actualizamos con lo que
-                // se acaba de capturar en el formulario ahora mismo.
-                string? nuevoGenero = string.IsNullOrEmpty(generoSeleccionado) ? null : generoSeleccionado;
-                if (existente.Genero != nuevoGenero || existente.AnioNacimiento != anioNacimientoNuevo)
-                {
-                    existente.Genero = nuevoGenero;
-                    existente.AnioNacimiento = anioNacimientoNuevo;
-                    await db.SaveChangesAsync();
-                }
-
-                atleta = existente;
-            }
-            else
+            if (existente == null)
             {
                 atleta = new Atleta
-                {
-                    Nombre = nuevoNombreAtleta.Trim(),
-                    MunicipioId = municipioSeleccionadoId,
-                    Genero = string.IsNullOrEmpty(generoSeleccionado) ? null : generoSeleccionado,
-                    AnioNacimiento = anioNacimientoNuevo
-                };
+                    {
+                        Nombre = nombreFinalAtleta,
+                        MunicipioId = municipioSeleccionadoId,
+                        Genero = generoFinalAtleta,
+                        AnioNacimiento = anioNacimientoNuevo
+                    };
                 db.Atletas.Add(atleta);
 
                 try { await db.SaveChangesAsync(); }
                 catch (DbUpdateException) { mensajeError = "No se pudo registrar el atleta. Revisa el año de nacimiento."; return; }
+            }
+            else
+            {
+                // Nombre + Municipio + Año de nacimiento, los 3 exactamente
+                // iguales, ya es mucha casualidad -- probablemente es la
+                // misma persona, pero preguntamos para estar seguros, ya
+                // que si nos equivocamos aquí se mezclaría mal el ranking.
+                bool esLaMisma = await JS.InvokeAsync<bool>("confirm",
+                    $"Ya existe un atleta llamado '{existente.Nombre}' del mismo municipio y año de nacimiento. ¿Es la misma persona?");
 
+                if (esLaMisma)
+                {
+                    if (existente.Genero != generoFinalAtleta)
+                    {
+                        existente.Genero = generoFinalAtleta;
+                        await db.SaveChangesAsync();
+                    }
+                    atleta = existente;
+                }
+                else
+                {
+                    string? diferenciador = await JS.InvokeAsync<string?>("prompt",
+                        "Son personas distintas. Escribe algo para diferenciarlas en el sistema (ej. un apodo, o el nombre de un padre/tutor):");
+
+                    if (string.IsNullOrWhiteSpace(diferenciador))
+                    {
+                        mensajeError = "Necesitas escribir un diferenciador para poder registrar a esta segunda persona.";
+                        return;
+                    }
+
+                    nombreFinalAtleta = $"{nombreFinalAtleta} ({diferenciador.Trim()})";
+
+                    atleta = new Atleta
+                        {
+                            Nombre = nombreFinalAtleta,
+                            MunicipioId = municipioSeleccionadoId,
+                            Genero = generoFinalAtleta,
+                            AnioNacimiento = anioNacimientoNuevo
+                        };
+                    db.Atletas.Add(atleta);
+
+                    try { await db.SaveChangesAsync(); }
+                    catch (DbUpdateException) { mensajeError = "No se pudo registrar el atleta. Revisa el año de nacimiento."; return; }
+                }
             }
         }
 

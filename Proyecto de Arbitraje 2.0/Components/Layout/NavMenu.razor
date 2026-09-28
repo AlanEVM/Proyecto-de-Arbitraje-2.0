@@ -115,12 +115,22 @@
             </Authorized>
         </AuthorizeView>
         <NavLink class="topbar-link" href="atletas">Atletas</NavLink>
-        <NavLink class="topbar-link" href="calendario">Calendario</NavLink>
+        @if (TorneoActual.ModalidadTorneo == "Jornadas")
+        {
+            <NavLink class="topbar-link" href="jornadas">Jornadas</NavLink>
+        }
+        else
+        {
+            <NavLink class="topbar-link" href="calendario">Calendario</NavLink>
+        }
         <NavLink class="topbar-link" href="fasefinal">Fase Final</NavLink>
-        <AuthorizeView Context="rolSubCanchas">
-            <Authorized>
-                <NavLink class="topbar-link" href="config-canchas">Canchas</NavLink>
-            </Authorized>
-        </AuthorizeView>
+        @if (TorneoActual.ModalidadTorneo != "Jornadas")
+        {
+            <AuthorizeView Context="rolSubCanchas">
+                <Authorized>
+                    <NavLink class="topbar-link" href="config-canchas">Canchas</NavLink>
+                </Authorized>
+            </AuthorizeView>
+        }
     </div>
 }

@@ -229,12 +229,6 @@
 
     protected override async Task OnInitializedAsync()
     {
-        if (!TorneoActual.CanchasConfirmadas)
-        {
-            Navigation.NavigateTo("/config-canchas");
-            return;
-        }
-
         var authState = await AuthStateProvider.GetAuthenticationStateAsync();
         nombreUsuarioActual = authState.User.Identity?.Name ?? "";
 
@@ -246,6 +240,12 @@
             .FirstOrDefaultAsync(p => p.Id == PartidoId);
 
         if (partido == null) return;
+
+        if (partido.Categoria.Formato != "Jornadas" && !TorneoActual.CanchasConfirmadas)
+        {
+            Navigation.NavigateTo("/config-canchas");
+            return;
+        }
 
         bool candadoLibre = partido.CapturaEnVivoPor == null
             || partido.CapturaEnVivoPor == nombreUsuarioActual

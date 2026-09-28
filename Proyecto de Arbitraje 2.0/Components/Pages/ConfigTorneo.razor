@@ -99,11 +99,11 @@
                                             </div>
                                             <div class="campo" style="max-width:140px; margin-bottom:0;">
                                                 <label>Puntos para ganar un set</label>
-                                                <input type="number" min="1" @bind="editConfigPuntosJuego" />
+                                                <input type="number" min="1" max="21" @bind="editConfigPuntosJuego" />
                                             </div>
                                             <div class="campo" style="max-width:140px; margin-bottom:0;">
                                                 <label>Puntos límite (tope absoluto)</label>
-                                                <input type="number" min="1" @bind="editConfigPuntosLimite" />
+                                                <input type="number" min="1" max="30" @bind="editConfigPuntosLimite" />
                                             </div>
                                         }
 
@@ -163,11 +163,11 @@
                                                 </div>
                                                 <div class="campo" style="max-width:150px; margin-bottom:0;">
                                                     <label>Puntos para ganar set (Fase Final)</label>
-                                                    <input type="number" min="1" @bind="editConfigPuntosJuegoFinal" />
+                                                    <input type="number" min="1" max="21" @bind="editConfigPuntosJuegoFinal" />
                                                 </div>
                                                 <div class="campo" style="max-width:150px; margin-bottom:0;">
                                                     <label>Puntos límite (Fase Final)</label>
-                                                    <input type="number" min="1" @bind="editConfigPuntosLimiteFinal" />
+                                                    <input type="number" min="1" max="30" @bind="editConfigPuntosLimiteFinal" />
                                                 </div>
                                             }
                                         }
@@ -327,7 +327,7 @@
 
         await db.SaveChangesAsync();
 
-        TorneoActual.EntrarATorneo(torneo.Id, torneo.Nombre, torneo.CanchasConfirmadas);
+        TorneoActual.EntrarATorneo(torneo.Id, torneo.Nombre, torneo.CanchasConfirmadas, torneo.Modalidad);
         mensaje = "Cambios guardados.";
         esExito = true;
     }
@@ -490,6 +490,30 @@
         if (!iniciada && editConfigPuntosLimite < editConfigPuntosJuego)
         {
             mensaje = "El límite no puede ser menos a los puntos para ganar.";
+            return;
+        }
+
+        if (!iniciada && (editConfigPuntosJuego < 1 || editConfigPuntosJuego > 21))
+        {
+            mensaje = "Los puntos para ganar deben estar entre 1 y 21.";
+            return;
+        }
+
+        if (!iniciada && (editConfigPuntosLimite < 1 || editConfigPuntosLimite > 30))
+        {
+            mensaje = "El tope de puntos debe estar entre 1 y 30.";
+            return;
+        }
+
+        if (editConfigPuntosJuegoFinal < 1 || editConfigPuntosJuegoFinal > 21)
+        {
+            mensaje = "Los puntos para ganar de la Fase Final deben estar entre 1 y 21.";
+            return;
+        }
+
+        if (editConfigPuntosLimiteFinal < 1 || editConfigPuntosLimiteFinal > 30)
+        {
+            mensaje = "El tope de puntos de la Fase Final debe estar entre 1 y 30.";
             return;
         }
 

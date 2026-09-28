@@ -5,14 +5,16 @@ public class TorneoActualService
     public int? TorneoId { get; private set; }
     public string? NombreTorneo { get; private set; }
     public bool CanchasConfirmadas { get; private set; }
+    public string? ModalidadTorneo { get; private set; }
 
     public event Action? OnCambio;
 
-    public void EntrarATorneo(int id, string nombre, bool canchasConfirmadas)
+    public void EntrarATorneo(int id, string nombre, bool canchasConfirmadas, string? modalidadTorneo = null)
     {
         TorneoId = id;
         NombreTorneo = nombre;
         CanchasConfirmadas = canchasConfirmadas;
+        ModalidadTorneo = modalidadTorneo;
         OnCambio?.Invoke();
     }
 
@@ -27,6 +29,7 @@ public class TorneoActualService
         TorneoId = null;
         NombreTorneo = null;
         CanchasConfirmadas = false;
+        ModalidadTorneo = null;
         OnCambio?.Invoke();
     }
 }

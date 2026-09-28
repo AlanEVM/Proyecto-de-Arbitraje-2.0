@@ -101,9 +101,16 @@
 
     private async Task Entrar(Torneo t)
     {
-        TorneoActual.EntrarATorneo(t.Id, t.Nombre, t.CanchasConfirmadas);
+        TorneoActual.EntrarATorneo(t.Id, t.Nombre, t.CanchasConfirmadas, t.Modalidad);
 
         var authState = await AuthStateProvider.GetAuthenticationStateAsync();
-        Nav.NavigateTo((authState.User.IsInRole("Admin") || authState.User.IsInRole("Organizador")) ? "/torneo-dashboard" : "/calendario");
+        if (authState.User.IsInRole("Admin") || authState.User.IsInRole("Organizador"))
+        {
+            Nav.NavigateTo("/torneo-dashboard");
+        }
+        else
+        {
+            Nav.NavigateTo(t.Modalidad == "Jornadas" ? "/jornadas" : "/calendario");
+        }
     }
 }
