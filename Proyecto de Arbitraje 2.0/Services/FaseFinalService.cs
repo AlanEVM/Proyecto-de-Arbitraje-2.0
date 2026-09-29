@@ -627,6 +627,10 @@ public class FaseFinalService
             }   
         }
 
+        var errorSets = CalendarioService.ValidarSetsCapturados(s1a, s1b, s2a, s2b, s3a, s3b, modalidadSets);
+        if (errorSets != null) return (false, errorSets);
+
+
         int categoriaId;
         string faseActual;
         int? banda;
@@ -643,9 +647,6 @@ public class FaseFinalService
 
             int setsA = 0, setsB = 0;
             var setsJugados = new List<(int num, int pa, int pb)>();
-
-            if (modalidadSets == "2 de 3 Sets" && setsJugados.Count < 2)
-                return (false, "Faltan sets por capturar para terminar este partido");
 
             if (modalidadSets == "1 Set")
             {

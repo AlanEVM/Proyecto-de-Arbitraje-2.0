@@ -624,6 +624,9 @@ public class CalendarioService
             }
         }
 
+        var errorSets = ValidarSetsCapturados(s1a, s1b, s2a, s2b, s3a, s3b, modalidadSets);
+        if (errorSets != null) return (false, errorSets);
+
         int torneoId;
         using (var db = await _factory.CreateDbContextAsync())
         {
@@ -668,6 +671,30 @@ public class CalendarioService
 
         _eventBus.Notificar();
         return (true, "Resultado guardado.");
+    }
+
+    // Valida la combinación de sets capturados (ya con cada marcador validado por separado).
+    // Devuelve el mensaje de error, o null si todo está bien.
+    public static string? ValidarSetsCapturados(int s1a, int s1b, int s2a, int s2b, int s3a, int s3b, string modalidadSets)
+    {
+        if (modalidadSets != "2 de 3 Sets") return null;
+
+        bool hayS2 = s2a > 0 || s2b > 0;
+        bool hayS3 = s3a > 0 || s3b > 0;
+
+        if (hayS3 && !hayS2)
+            return "Captura el Set 2 antes del Set 3.";
+
+        int ganadosA = (s1a > s1b ? 1 : 0) + (hayS2 && s2a > s2b ? 1 : 0);
+        int ganadosB = (s1b > s1a ? 1 : 0) + (hayS2 && s2b > s2a ? 1 : 0);
+
+        if (hayS3 && (ganadosA == 2 || ganadosB == 2))
+            return "Un atleta ya ganó los dos primeros sets; no se puede capturar un Set 3.";
+
+        if (!hayS3 && ganadosA < 2 && ganadosB < 2)
+            return "Faltan sets por capturar para terminar este partido.";
+
+        return null;
     }
 
     private static (int setsA, int setsB, List<(int num, int pa, int pb)> setsJugados) CalcularSetsJugados(int s1a, int s1b, int s2a, int s2b, int s3a, int s3b, string modalidadSets)
@@ -719,6 +746,9 @@ public class CalendarioService
             if (!EsMarcadorValido(ganador, perdedor, puntosJuego, puntosLimite))
                 return (false, $"Marcador inválido: {a}-{b}. Debe cumplir las reglas de puntos y diferencia mínima.");
         }
+
+        var errorSets = ValidarSetsCapturados(s1a, s1b, s2a, s2b, s3a, s3b, modalidadSets);
+        if (errorSets != null) return (false, errorSets);
 
         using var db = await _factory.CreateDbContextAsync();
 
