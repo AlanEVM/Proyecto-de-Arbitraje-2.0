@@ -45,20 +45,23 @@ else
 
         @if (categoriaSeleccionadaId != 0)
         {
-            <div class="tarjeta">
-                @if (totalJornadas == 0)
-                {
-                    <p class="nota">Esta categoría necesita al menos 2 atletas activos para generar jornadas.</p>
-                }
-                else if (ultimaJornada >= totalJornadas)
-                {
-                    <p class="nota">Ya se generaron todas las jornadas de esta categoría (@totalJornadas de @totalJornadas).</p>
-                }
-                else
-                {
-                    <button class="btn btn-primary" @onclick="GenerarJornada">Generar Jornada @(ultimaJornada + 1) de @totalJornadas</button>
-                }
-            </div>
+            @if (puedeCapturar)
+            {
+                <div class="tarjeta">
+                    @if (totalJornadas == 0)
+                    {
+                        <p class="nota">Esta categoría necesita al menos 2 atletas activos para generar jornadas.</p>
+                    }
+                    else if (ultimaJornada >= totalJornadas)
+                    {
+                        <p class="nota">Ya se generaron todas las jornadas de esta categoría (@totalJornadas de @totalJornadas).</p>
+                    }
+                    else
+                    {
+                        <button class="btn btn-primary" @onclick="GenerarJornada">Generar Jornada @(ultimaJornada + 1) de @totalJornadas</button>
+                    }
+                </div>
+            }
 
             @if (!jornadas.Any())
             {
@@ -90,7 +93,13 @@ else
                                 <div class="jf-sets jf-sets-a">
                                     @for (int s = 0; s < numSets; s++)
                                     {
-                                        <span class="jf-celda" data-set="@(numSets > 1 ? $"S{s + 1}" : null)">@Celda(item, s, true)</span>
+                                        <span class="jf-set">
+                                            @if (numSets > 1)
+                                            {
+                                                <span class="jf-set-etq">S@(s + 1)</span>
+                                            }
+                                            <span class="jf-celda">@Celda(item, s, true)</span>
+                                        </span>
                                     }
                                 </div>
 
@@ -99,13 +108,19 @@ else
                                 <div class="jf-sets jf-sets-b">
                                     @for (int s = 0; s < numSets; s++)
                                     {
-                                        <span class="jf-celda" data-set="@(numSets > 1 ? $"S{s + 1}" : null)">@Celda(item, s, false)</span>
+                                        <span class="jf-set">
+                                            @if (numSets > 1)
+                                            {
+                                                <span class="jf-set-etq">S@(s + 1)</span>
+                                            }
+                                            <span class="jf-celda">@Celda(item, s, false)</span>
+                                        </span>
                                     }
                                 </div>
 
                                 <div class="jf-nombre jf-nombre-b @(ganaB ? "jf-ganador" : "")">@item.NombreB</div>
 
-                                @if (!jugado && capturandoPartidoId != item.Partido.Id)
+                                @if (!jugado && puedeCapturar && capturandoPartidoId != item.Partido.Id)
                                 {
                                     <div class="jf-accion">
                                         <button class="btn btn-primary btn-mini" @onclick="() => AbrirCaptura(item)">Capturar</button>
@@ -153,7 +168,7 @@ else
             }
         }
 
-        @if (ultimosCapturados.Any())
+        @if (puedeCapturar && ultimosCapturados.Any())
         {
             <details class="tarjeta">
                 <summary style="cursor:pointer; color:var(--secundario); font-weight:600;">Últimos resultados capturados (corregir)</summary>
@@ -212,6 +227,7 @@ else
     private int totalJornadas = 0;
     private int numSets = 3;
     private string nombreUsuarioActual = "";
+    private bool puedeCapturar;
 
     private string mensajeInfo = "";
     private bool esExitoInfo = true;
@@ -237,6 +253,11 @@ else
 
         var authState = await AuthStateProvider.GetAuthenticationStateAsync();
         nombreUsuarioActual = authState.User.Identity?.Name ?? "";
+
+        nombreUsuarioActual = authState.User.Identity?.Name ?? "";
+        puedeCapturar = authState.User.IsInRole("Admin")
+                     || authState.User.IsInRole("Organizador")
+                     || authState.User.IsInRole("Arbitro");   // <-- nueva
 
         await CargarCategorias();
         await CargarUltimosCapturados();
@@ -341,6 +362,8 @@ else
 
     private async Task GenerarJornada()
     {
+        if (!puedeCapturar) return;
+
         bool confirmado = await JS.InvokeAsync<bool>("confirm", "¿Estás seguro de que quieres generar esta jornada?");
         if (!confirmado) return;
 
@@ -351,6 +374,8 @@ else
 
     private async Task AbrirCaptura(PartidoQueueItem item)
     {
+        if (!puedeCapturar) return;
+
         corrigiendoPartidoId = null;
         capturandoPartidoId = item.Partido.Id;
         s1a = s1b = s2a = s2b = s3a = s3b = 0;
@@ -369,6 +394,8 @@ else
 
     private async Task GuardarResultado()
     {
+        if (!puedeCapturar) return;
+
         if (capturandoPartidoId == null) return;
 
         if (s1a == 0 && s1b == 0 && s2a == 0 && s2b == 0 && s3a == 0 && s3b == 0)
@@ -393,6 +420,8 @@ else
 
     private async Task AbrirCorreccion(PartidoQueueItem item)
     {
+        if (!puedeCapturar) return;
+
         capturandoPartidoId = null;
         corrigiendoPartidoId = item.Partido.Id;
 
@@ -418,6 +447,8 @@ else
 
     private async Task GuardarCorreccion(int partidoId)
     {
+        if (!puedeCapturar) return;
+
         bool confirmado = await JS.InvokeAsync<bool>("confirm", "¿Corregir este resultado? Se recalculan las estadísticas de la jornada");
         if (!confirmado) return;
 

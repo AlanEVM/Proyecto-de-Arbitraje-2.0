@@ -298,13 +298,13 @@
                                                     }
                                                 </div>
 
-                                                @if (p.Estado != "Jugado" && !esSoloLectura && !TorneoActual.CanchasConfirmadas)
+                                                @if (p.Estado != "Jugado" && !esSoloLectura && !CanchasListas)
                                                 {
                                                     <p class="nota">Confirma las canchas para poder actuar sobre este partido.</p>
                                                 }
                                                 else if (p.Estado != "Jugado" && !esSoloLectura && estaCapturando)
                                                 {
-                                                    @if (esArbitro && TorneoActual.CanchasConfirmadas)
+                                                    @if (esArbitro && CanchasListas && !EsTorneoJornadas)
                                                     {
                                                         <div style="margin:6px 0;">
                                                             <button class="btn btn-ghost btn-mini" @onclick='() => Navigation.NavigateTo($"/fasefinal/punto-punto/{p.Id}")'>Capturar punto por punto</button>
@@ -700,9 +700,17 @@
         }
     }
 
+    private bool EsTorneoJornadas => TorneoActual.ModalidadTorneo == "Jornadas";
+
+    // En jornadas no se usan canchas, así que se consideran "listas" siempre
+    private bool CanchasListas => EsTorneoJornadas || TorneoActual.CanchasConfirmadas;
+
     private async Task Activar(int partidoId)
     {
-        var (ok, msg) = await CalendarioSvc.ActivarPartidoAsync(partidoId, TorneoActual.TorneoId!.Value);
+        var (ok, msg) = EsTorneoJornadas
+            ? await CalendarioSvc.ActivarPartidoSinCanchaAsync(partidoId)
+            : await CalendarioSvc.ActivarPartidoAsync(partidoId, TorneoActual.TorneoId!.Value);
+
         mensaje = msg; esExito = ok;
         if (ok) await CargarBracket();
     }
