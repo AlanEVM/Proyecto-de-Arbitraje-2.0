@@ -459,6 +459,8 @@
         public string NuevoGenero { get; set; } = "";
         public int? AnioNacimiento { get; set; }
         public int AtletaExistenteId { get; set; }
+        public int? FiltroAnio { get; set; }        // <-- nueva
+        public int FiltroMunicipioId { get; set; }  // <-- nueva
     }
 
     protected override async Task OnInitializedAsync()
@@ -491,6 +493,8 @@
         atletaSingleExistenteId = 0;
         filtroAnioNacimiento = null;
         filtroMunicipioSingleId = 0;
+        integrante1.FiltroAnio = null; integrante1.FiltroMunicipioId = 0;
+        integrante2.FiltroAnio = null; integrante2.FiltroMunicipioId = 0;
 
         if (categoriaSeleccionadaId == 0) { categoriaActiva = null; atletaIdsYaRegistradosEnCategoria.Clear(); return; }
 
@@ -927,7 +931,7 @@
 
         nuevoNombreAtleta = "";
         anioNacimientoNuevo = null;
-        atletaSingleEsNuevo = true; atletaSingleExistenteId = 0;
+        atletaSingleExistenteId = 0;   // solo se limpia la selección; se conserva el modo (nuevo/existente) y los filtros
         mensajeExito = "¡Atleta registrado!";
 
         atletasDisponibles = await db.Atletas.Include(a => a.Municipio).OrderBy(a => a.Nombre).ToListAsync();
@@ -979,7 +983,8 @@
         try { await db.SaveChangesAsync(); }
         catch (DbUpdateException) { mensajeError = "Uno de los dos atletas ya está registrado en esta misma categoría."; return; }
 
-        integrante1 = new(); integrante2 = new();
+        integrante1 = new() { EsNuevo = integrante1.EsNuevo, FiltroAnio = integrante1.FiltroAnio, FiltroMunicipioId = integrante1.FiltroMunicipioId };
+        integrante2 = new() { EsNuevo = integrante2.EsNuevo, FiltroAnio = integrante2.FiltroAnio, FiltroMunicipioId = integrante2.FiltroMunicipioId };
         mensajeExito = "¡Pareja registrada!";
 
         atletasDisponibles = await db.Atletas.Include(a => a.Municipio).OrderBy(a => a.Nombre).ToListAsync();
@@ -1049,8 +1054,30 @@
 
         var aniosPermitidosPareja = AniosPermitidos(); 
 
+        // El filtro automático (por el otro integrante) tiene prioridad sobre el manual
+        int? municipioEfectivo = filtroMunicipioId
+    ?? (integrante.FiltroMunicipioId != 0 ? integrante.FiltroMunicipioId : (int?)null);
+
+        // Género del otro integrante (si ya está definido)
+        string? generoOtro = null;
+        if (otro.EsNuevo)
+            generoOtro = string.IsNullOrEmpty(otro.NuevoGenero) ? null : otro.NuevoGenero;
+        else if (otro.AtletaExistenteId != 0)
+            generoOtro = atletasDisponibles?.FirstOrDefault(a => a.Id == otro.AtletaExistenteId)?.Genero;
+
+        // Género que se le debe mostrar a este integrante
+        string? generoRequerido = categoriaActiva!.Rama switch
+        {
+            "Varonil" => "M",
+            "Femenil" => "F",
+            "Mixto" => generoOtro == "M" ? "F" : generoOtro == "F" ? "M" : null,
+            _ => null
+        };
+
         var listaFiltrada = (atletasDisponibles ?? new List<Atleta>())
-            .Where(a => filtroMunicipioId == null || a.MunicipioId == filtroMunicipioId)
+            .Where(a => municipioEfectivo == null || a.MunicipioId == municipioEfectivo)
+            .Where(a => integrante.FiltroAnio == null || a.AnioNacimiento == integrante.FiltroAnio)
+            .Where(a => generoRequerido == null || a.Genero == generoRequerido)
             .Where(a => a.Id != otro.AtletaExistenteId)
             .Where(a => !atletaIdsYaRegistradosEnCategoria.Contains(a.Id))
             .Where(a => aniosPermitidosPareja == null || (a.AnioNacimiento != null && aniosPermitidosPareja.Contains(a.AnioNacimiento.Value)))
@@ -1126,11 +1153,34 @@
             }
             else
             {
+                <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:6px;">
+                    @if (aniosPermitidosPareja == null)
+                    {
+                        <div>
+                            <label>Filtrar por año:</label><br />
+                            <input type="number" min="@(DateTime.Now.Year - 99)" max="@DateTime.Now.Year"
+                                   @bind="integrante.FiltroAnio" placeholder="Todos" style="width:90px;" />
+                        </div>
+                    }
+                    @if (filtroMunicipioId == null)
+                    {
+                        <div>
+                            <label>Filtrar por equipo:</label><br />
+                            <select @bind="integrante.FiltroMunicipioId" style="width:200px;">
+                                <option value="0">-- Todos --</option>
+                                @foreach (var m in municipios!)
+                                {
+                                    <option value="@m.Id">@m.Nombre</option>
+                                }
+                            </select>
+                        </div>
+                    }
+                </div>
                 <div>
                     <label>Selecciona atleta:</label>
-                    @if (nombreMunicipioFiltro != null)
+                    @if (categoriaActiva!.Rama == "Mixto" && generoRequerido != null)
                     {
-                        <span style="color:#666; font-size:0.9em;"> (mostrando solo atletas de @nombreMunicipioFiltro)</span>
+                        <span style="color:#666; font-size:0.9em;"> (mostrando solo @(generoRequerido == "F" ? "mujeres" : "hombres"))</span>
                     }
                     <br />
                     <select @bind="integrante.AtletaExistenteId" style="width:300px;">
@@ -1150,6 +1200,15 @@
         </div>
     };
 
+    private async Task RecargarCategoriasAsync()
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        categorias = await db.Categorias
+            .Include(c => c.Configuracion)
+            .Where(c => c.TorneoId == TorneoActual.TorneoId)
+            .ToListAsync();
+    }
+
     private async Task CerrarRegistro()
     {
         if (categoriaActiva == null) return;
@@ -1159,10 +1218,14 @@
         if (!confirmado) return;
 
         var (ok, msg) = await CalendarioSvc.CerrarRegistroAsync(categoriaActiva.Id);
+
+        // Volver a leer la categoría de la BD para que RegistroCerrado quede actualizado
+        await RecargarCategoriasAsync();
+        await OnCategoriaSeleccionada();
+
+        // Los mensajes se ponen DESPUÉS, porque OnCategoriaSeleccionada los limpia
         mensajeError = ok ? "" : msg;
         mensajeExito = ok ? msg : "";
-
-        await OnCategoriaSeleccionada();
     }
 
     private async Task ReabrirRegistro()
@@ -1170,10 +1233,12 @@
         if (categoriaActiva == null) return;
 
         var (ok, msg) = await CalendarioSvc.ReabrirRegistroAsync(categoriaActiva.Id);
+
+        await RecargarCategoriasAsync();
+        await OnCategoriaSeleccionada();
+
         mensajeError = ok ? "" : msg;
         mensajeExito = ok ? msg : "";
-
-        await OnCategoriaSeleccionada();
     }
 
     private async Task DarDeBaja(int competidorId, string nombre)

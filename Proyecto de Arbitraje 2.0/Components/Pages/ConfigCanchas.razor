@@ -257,10 +257,19 @@
     private async Task AgregarCancha()
     {
         using var db = await DbFactory.CreateDbContextAsync();
-        var lista = canchas ?? new List<Cancha>();
-        int siguienteNumero = (lista.Any() ? lista.Max(c => c.Numero) : 0) + 1;
+        int torneoId = TorneoActual.TorneoId!.Value;
 
-        db.Canchas.Add(new Cancha { TorneoId = TorneoActual.TorneoId!.Value, Numero = siguienteNumero, Activa = true });
+        // Números ya usados en este torneo (activas o apagadas), leídos de la BD
+        var usados = (await db.Canchas
+            .Where(c => c.TorneoId == torneoId)
+            .Select(c => c.Numero)
+            .ToListAsync()).ToHashSet();
+
+        // Primer número libre empezando en 1 (rellena huecos)
+        int siguienteNumero = 1;
+        while (usados.Contains(siguienteNumero)) siguienteNumero++;
+
+        db.Canchas.Add(new Cancha { TorneoId = torneoId, Numero = siguienteNumero, Activa = true });
         await db.SaveChangesAsync();
         await CargarCanchas();
     }

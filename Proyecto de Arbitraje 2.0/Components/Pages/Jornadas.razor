@@ -9,7 +9,6 @@
 @inject CalendarioService CalendarioSvc
 @inject TorneoEventBus EventBus
 @inject IJSRuntime JS
-@inject NavigationManager Navigation
 @inject AuthenticationStateProvider AuthStateProvider
 
 <PageTitle>Jornadas</PageTitle>
@@ -106,13 +105,43 @@ else
 
                                 <div class="jf-nombre jf-nombre-b @(ganaB ? "jf-ganador" : "")">@item.NombreB</div>
 
-                                @if (!jugado)
+                                @if (!jugado && capturandoPartidoId != item.Partido.Id)
                                 {
                                     <div class="jf-accion">
-                                        <button class="btn btn-primary btn-mini" @onclick="() => Capturar(item.Partido.Id)">Capturar</button>
+                                        <button class="btn btn-primary btn-mini" @onclick="() => AbrirCaptura(item)">Capturar</button>
                                     </div>
                                 }
                             </div>
+
+                            @if (!jugado && capturandoPartidoId == item.Partido.Id)
+                            {
+                                <div class="jf-captura" style="padding: 8px 0 14px; border-bottom: 1px solid var(--gris-borde);">
+                                    <div class="captura-sets">
+                                        <div class="captura-set">
+                                            <label>Set 1</label>
+                                            @item.NombreA: <input type="number" min="0" class="input-mini" @bind="s1a" /><br />
+                                            @item.NombreB: <input type="number" min="0" class="input-mini" @bind="s1b" />
+                                        </div>
+                                        @if (modalidadSetsCap == "2 de 3 Sets")
+                                        {
+                                            <div class="captura-set">
+                                                <label>Set 2</label>
+                                                @item.NombreA: <input type="number" min="0" class="input-mini" @bind="s2a" /><br />
+                                                @item.NombreB: <input type="number" min="0" class="input-mini" @bind="s2b" />
+                                            </div>
+                                            <div class="captura-set">
+                                                <label>Set 3</label>
+                                                @item.NombreA: <input type="number" min="0" class="input-mini" @bind="s3a" /><br />
+                                                @item.NombreB: <input type="number" min="0" class="input-mini" @bind="s3b" />
+                                            </div>
+                                        }
+                                    </div>
+                                    <div style="margin-top: 10px;">
+                                        <button class="btn btn-primary" @onclick="GuardarResultado">Guardar Resultado</button>
+                                        <button class="btn btn-ghost" @onclick="CancelarCaptura">Cancelar</button>
+                                    </div>
+                                </div>
+                            }
                         }
 
                         @if (!string.IsNullOrEmpty(j.Descansa))
@@ -187,6 +216,13 @@ else
     private string mensajeInfo = "";
     private bool esExitoInfo = true;
     private CancellationTokenSource? mensajeCts;
+
+    // Captura de resultado dentro de la misma página
+    private int? capturandoPartidoId;
+    private int s1a, s1b, s2a, s2b, s3a, s3b;
+    private string modalidadSetsCap = "2 de 3 Sets";
+    private int puntosJuegoCap = 21;
+    private int puntosLimiteCap = 30;
 
     private List<PartidoQueueItem> ultimosCapturados = new();
     private int? corrigiendoPartidoId;
@@ -269,6 +305,7 @@ else
     {
         categoriaSeleccionadaId = int.TryParse(e.Value?.ToString(), out var id) ? id : 0;
         corrigiendoPartidoId = null;
+        capturandoPartidoId = null;
         jornadas.Clear();
         ultimaJornada = 0;
 
@@ -312,19 +349,51 @@ else
         await CargarJornadas();
     }
 
-    private async Task Capturar(int partidoId)
+    private async Task AbrirCaptura(PartidoQueueItem item)
     {
-        var (ok, msg) = await CalendarioSvc.ActivarPartidoSinCanchaAsync(partidoId);
-        if (!ok)
+        corrigiendoPartidoId = null;
+        capturandoPartidoId = item.Partido.Id;
+        s1a = s1b = s2a = s2b = s3a = s3b = 0;
+
+        using var db = await DbFactory.CreateDbContextAsync();
+        var config = await db.Configuracions.FirstOrDefaultAsync(c => c.CategoriaId == item.Partido.CategoriaId);
+        modalidadSetsCap = config?.ModalidadSets ?? "2 de 3 Sets";
+        puntosJuegoCap = config?.PuntosJuego ?? 21;
+        puntosLimiteCap = config?.PuntosLimite ?? 30;
+    }
+
+    private void CancelarCaptura()
+    {
+        capturandoPartidoId = null;
+    }
+
+    private async Task GuardarResultado()
+    {
+        if (capturandoPartidoId == null) return;
+
+        if (s1a == 0 && s1b == 0 && s2a == 0 && s2b == 0 && s3a == 0 && s3b == 0)
         {
-            MostrarMensaje(msg, false);
+            MostrarMensaje("No puedes guardar un resultado con todos los marcadores en 0.", false);
             return;
         }
-        Navigation.NavigateTo($"/fasefinal/punto-punto/{partidoId}");
+
+        var (ok, msg) = await CalendarioSvc.CapturarResultadoAsync(
+            capturandoPartidoId.Value, s1a, s1b, s2a, s2b, s3a, s3b,
+            modalidadSetsCap, puntosJuegoCap, puntosLimiteCap, nombreUsuarioActual);
+
+        MostrarMensaje(msg, ok);
+
+        if (ok)
+        {
+            capturandoPartidoId = null;
+            if (categoriaSeleccionadaId != 0) await CargarJornadas();
+            await CargarUltimosCapturados();
+        }
     }
 
     private async Task AbrirCorreccion(PartidoQueueItem item)
     {
+        capturandoPartidoId = null;
         corrigiendoPartidoId = item.Partido.Id;
 
         var sets = item.Partido.SetsPartidos.OrderBy(s => s.NumeroSet).ToList();
