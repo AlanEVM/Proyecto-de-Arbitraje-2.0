@@ -10,6 +10,7 @@
 @inject TorneoEventBus EventBus
 @inject IJSRuntime JS
 @inject NavigationManager Navigation
+@inject AuthenticationStateProvider AuthStateProvider
 
 <PageTitle>Jornadas</PageTitle>
 
@@ -19,6 +20,11 @@
 }
 else
 {
+    @if (!string.IsNullOrEmpty(mensajeInfo))
+    {
+        <p class="@(esExitoInfo ? "mensaje-exito" : "mensaje-error") mensaje-flotante">@mensajeInfo</p>
+    }
+
     <div class="pagina">
         <div class="tarjeta-marcador pagina-header">
             <h1>Jornadas</h1>
@@ -41,7 +47,11 @@ else
         @if (categoriaSeleccionadaId != 0)
         {
             <div class="tarjeta">
-                @if (ultimaJornada >= totalJornadas)
+                @if (totalJornadas == 0)
+                {
+                    <p class="nota">Esta categoría necesita al menos 2 atletas activos para generar jornadas.</p>
+                }
+                else if (ultimaJornada >= totalJornadas)
                 {
                     <p class="nota">Ya se generaron todas las jornadas de esta categoría (@totalJornadas de @totalJornadas).</p>
                 }
@@ -49,58 +59,118 @@ else
                 {
                     <button class="btn btn-primary" @onclick="GenerarJornada">Generar Jornada @(ultimaJornada + 1) de @totalJornadas</button>
                 }
-
-                @if (!string.IsNullOrEmpty(mensaje))
-                {
-                    <p class="@(esExito ? "mensaje-exito" : "mensaje-error")">@mensaje</p>
-                }
             </div>
 
-            @if (ultimaJornada > 0)
+            @if (!jornadas.Any())
             {
                 <div class="tarjeta">
-                    <h2>Jornada @ultimaJornada</h2>
+                    <p class="vacio">Todavía no se ha generado ninguna jornada.</p>
+                </div>
+            }
 
-                    @if (!partidosJornada.Any())
-                    {
-                        <p class="vacio">Sin partidos.</p>
-                    }
-                    else
-                    {
-                        @foreach (var item in partidosJornada)
+            @foreach (var j in jornadas)
+            {
+                int jugadosJ = j.Partidos.Count(p => p.Partido.Estado == "Jugado");
+
+                <details class="tarjeta jornada-bloque" open="@(j.Numero == ultimaJornada)" @key="j.Numero">
+                    <summary>
+                        <span>Jornada @j.Numero</span>
+                        <span class="jornada-progreso">@jugadosJ de @j.Partidos.Count jugados</span>
+                    </summary>
+
+                    <div class="jornada-tabla">
+                        @foreach (var item in j.Partidos)
                         {
                             bool jugado = item.Partido.Estado == "Jugado";
-                            <div class="partido-card @(jugado ? "jugado" : "")">
-                                <div class="partido-card-top">
-                                    <div class="partido-card-info">
-                                        <div class="partido-nombres"><strong>@item.NombreA</strong> vs <strong>@item.NombreB</strong></div>
-                                        @if (jugado)
-                                        {
-                                            var sets = item.Partido.SetsPartidos.OrderBy(s => s.NumeroSet).ToList();
-                                            <div class="partido-meta">@string.Join(" · ", sets.Select(s => $"{s.PuntosA}-{s.PuntosB}"))</div>
-                                        }
-                                    </div>
-                                    <div class="partido-acciones-grid">
-                                        @if (!jugado)
-                                        {
-                                            <button class="btn btn-primary" @onclick="() => Capturar(item.Partido.Id)">Capturar</button>
-                                        }
-                                        else
-                                        {
-                                            <span class="badge badge-jugado">Jugado</span>
-                                        }
-                                    </div>
+                            bool ganaA = jugado && item.Partido.GanadorId == item.Partido.CompetidorAid;
+                            bool ganaB = jugado && item.Partido.GanadorId == item.Partido.CompetidorBid;
+
+                            <div class="jf-fila" @key="item.Partido.Id">
+                                <div class="jf-nombre jf-nombre-a @(ganaA ? "jf-ganador" : "")">@item.NombreA</div>
+
+                                <div class="jf-sets jf-sets-a">
+                                    @for (int s = 0; s < numSets; s++)
+                                    {
+                                        <span class="jf-celda">@Celda(item, s, true)</span>
+                                    }
                                 </div>
+
+                                <div class="jf-vs">@(item.Partido.EsDefault ? "WO" : "vs")</div>
+
+                                <div class="jf-sets jf-sets-b">
+                                    @for (int s = 0; s < numSets; s++)
+                                    {
+                                        <span class="jf-celda">@Celda(item, s, false)</span>
+                                    }
+                                </div>
+
+                                <div class="jf-nombre jf-nombre-b @(ganaB ? "jf-ganador" : "")">@item.NombreB</div>
+
+                                @if (!jugado)
+                                {
+                                    <div class="jf-accion">
+                                        <button class="btn btn-primary btn-mini" @onclick="() => Capturar(item.Partido.Id)">Capturar</button>
+                                    </div>
+                                }
+                            </div>
+                        }
+
+                        @if (!string.IsNullOrEmpty(j.Descansa))
+                        {
+                            <p class="nota" style="margin-top:10px;">Descansa esta jornada: <strong>@j.Descansa</strong></p>
+                        }
+                    </div>
+                </details>
+            }
+        }
+
+        @if (ultimosCapturados.Any())
+        {
+            <details class="tarjeta">
+                <summary style="cursor:pointer; color:var(--secundario); font-weight:600;">Últimos resultados capturados (corregir)</summary>
+                <div style="margin-top: 10px;">
+                    @foreach (var item in ultimosCapturados)
+                    {
+                        <div class="categoria-generar-row">
+                            <span class="categoria-generar-nombre">
+                                @item.Categoria @(item.Jornada != null ? $"· Jornada {item.Jornada}" : "") - @item.NombreA vs @item.NombreB
+                            </span>
+                            @if (corrigiendoPartidoId != item.Partido.Id)
+                            {
+                                <button class="btn btn-ghost" @onclick="() => AbrirCorreccion(item)">Corregir</button>
+                            }
+                        </div>
+
+                        @if (corrigiendoPartidoId == item.Partido.Id)
+                        {
+                            <div class="captura-sets">
+                                <div class="captura-set">
+                                    <label>Set 1</label>
+                                    @item.NombreA: <input type="number" min="0" class="input-mini" @bind="s1aC" /><br />
+                                    @item.NombreB: <input type="number" min="0" class="input-mini" @bind="s1bC" />
+                                </div>
+                                @if (modalidadSetsCorr == "2 de 3 Sets")
+                                {
+                                    <div class="captura-set">
+                                        <label>Set 2</label>
+                                        @item.NombreA: <input type="number" min="0" class="input-mini" @bind="s2aC" /><br />
+                                        @item.NombreB: <input type="number" min="0" class="input-mini" @bind="s2bC" />
+                                    </div>
+                                    <div class="captura-set">
+                                        <label>Set 3</label>
+                                        @item.NombreA: <input type="number" min="0" class="input-mini" @bind="s3aC" /><br />
+                                        @item.NombreB: <input type="number" min="0" class="input-mini" @bind="s3bC" />
+                                    </div>
+                                }
+                            </div>
+                            <div style="margin-top: 10px;">
+                                <button class="btn btn-primary" @onclick="() => GuardarCorreccion(item.Partido.Id)">Guardar Corrección</button>
+                                <button class="btn btn-ghost" @onclick="CancelarCorreccion">Cancelar</button>
                             </div>
                         }
                     }
-
-                    @if (!string.IsNullOrEmpty(atletaDescansa))
-                    {
-                        <p class="nota" style="margin-top:14px;">Descansa esta jornada: <strong>@atletaDescansa</strong></p>
-                    }
                 </div>
-            }
+            </details>
         }
     </div>
 }
@@ -108,31 +178,77 @@ else
 @code {
     private List<Categoria> categorias = new();
     private int categoriaSeleccionadaId = 0;
+    private List<JornadaVista> jornadas = new();
     private int ultimaJornada = 0;
     private int totalJornadas = 0;
-    private List<PartidoQueueItem> partidosJornada = new();
-    private string? atletaDescansa;
-    private string mensaje = "";
-    private bool esExito;
+    private int numSets = 3;
+    private string nombreUsuarioActual = "";
+
+    private string mensajeInfo = "";
+    private bool esExitoInfo = true;
+    private CancellationTokenSource? mensajeCts;
+
+    private List<PartidoQueueItem> ultimosCapturados = new();
+    private int? corrigiendoPartidoId;
+    private int s1aC, s1bC, s2aC, s2bC, s3aC, s3bC;
+    private string modalidadSetsCorr = "2 de 3 Sets";
+    private int puntosJuegoCorr = 21;
+    private int puntosLimiteCorr = 30;
 
     protected override async Task OnInitializedAsync()
     {
-        EventBus.OnCambio += Refrescar;
+        if (TorneoActual.TorneoId == null) return;
+
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        nombreUsuarioActual = authState.User.Identity?.Name ?? "";
+
         await CargarCategorias();
+        await CargarUltimosCapturados();
+
+        EventBus.OnCambio += ManejarCambioExterno;
     }
 
-    private void Refrescar()
+    private void ManejarCambioExterno()
     {
-        InvokeAsync(async () =>
+        _ = InvokeAsync(async () =>
         {
-            if (categoriaSeleccionadaId != 0) await CargarJornadaActual();
+            if (categoriaSeleccionadaId != 0) await CargarJornadas();
+            await CargarUltimosCapturados();
             StateHasChanged();
         });
     }
 
     public void Dispose()
     {
-        EventBus.OnCambio -= Refrescar;
+        EventBus.OnCambio -= ManejarCambioExterno;
+        mensajeCts?.Cancel();
+    }
+
+    private void MostrarMensaje(string msg, bool exito = true)
+    {
+        mensajeInfo = msg;
+        esExitoInfo = exito;
+
+        mensajeCts?.Cancel();
+        mensajeCts = new CancellationTokenSource();
+        var token = mensajeCts.Token;
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(4000, token);
+                await InvokeAsync(() =>
+                {
+                    if (!token.IsCancellationRequested)
+                    {
+                        mensajeInfo = "";
+                        StateHasChanged();
+                    }
+                });
+            }
+            catch (TaskCanceledException) { }
+        });
     }
 
     private async Task CargarCategorias()
@@ -144,35 +260,46 @@ else
             .ToListAsync();
     }
 
+    private async Task CargarUltimosCapturados()
+    {
+        ultimosCapturados = await CalendarioSvc.ObtenerUltimosCapturadosAsync(TorneoActual.TorneoId!.Value);
+    }
+
     private async Task SeleccionarCategoria(ChangeEventArgs e)
     {
         categoriaSeleccionadaId = int.TryParse(e.Value?.ToString(), out var id) ? id : 0;
-        mensaje = "";
-        if (categoriaSeleccionadaId != 0) await CargarJornadaActual();
+        corrigiendoPartidoId = null;
+        jornadas.Clear();
+        ultimaJornada = 0;
+
+        if (categoriaSeleccionadaId != 0) await CargarJornadas();
     }
 
-    private async Task CargarJornadaActual()
+    private async Task CargarJornadas()
     {
         using var db = await DbFactory.CreateDbContextAsync();
 
         int activos = await db.Competidores.CountAsync(c => c.CategoriaId == categoriaSeleccionadaId && c.Activo);
         totalJornadas = CalendarioService.CalcularTotalJornadas(activos);
 
-        ultimaJornada = await db.Partidos
-            .Where(p => p.CategoriaId == categoriaSeleccionadaId && p.Fase == "Liga")
-            .Select(p => (int?)p.Jornada)
-            .MaxAsync() ?? 0;
+        var config = await db.Configuracions.FirstOrDefaultAsync(c => c.CategoriaId == categoriaSeleccionadaId);
+        string modalidadSets = config?.ModalidadSets ?? "2 de 3 Sets";
 
-        if (ultimaJornada > 0)
-        {
-            partidosJornada = await CalendarioSvc.ObtenerPartidosDeJornadaAsync(categoriaSeleccionadaId, ultimaJornada);
-            atletaDescansa = await CalendarioSvc.ObtenerAtletaQueDescansaAsync(categoriaSeleccionadaId, ultimaJornada);
-        }
-        else
-        {
-            partidosJornada.Clear();
-            atletaDescansa = null;
-        }
+        jornadas = await CalendarioSvc.ObtenerJornadasDeCategoriaAsync(categoriaSeleccionadaId);
+        ultimaJornada = jornadas.Any() ? jornadas.Max(j => j.Numero) : 0;
+
+        // Cuadros por lado: 1 si es "1 Set", 3 si es "2 de 3 Sets" (o si ya hay
+        // partidos capturados con más de un set, para no esconder marcadores).
+        numSets = modalidadSets == "2 de 3 Sets" || jornadas.Any(j => j.Partidos.Any(p => p.Partido.SetsPartidos.Count > 1))
+            ? 3
+            : 1;
+    }
+
+    private static string Celda(PartidoQueueItem item, int indice, bool esA)
+    {
+        var set = item.Partido.SetsPartidos.OrderBy(s => s.NumeroSet).ElementAtOrDefault(indice);
+        if (set == null) return "";
+        return (esA ? set.PuntosA : set.PuntosB).ToString();
     }
 
     private async Task GenerarJornada()
@@ -181,9 +308,8 @@ else
         if (!confirmado) return;
 
         var (ok, msg, _) = await CalendarioSvc.GenerarSiguienteJornadaAsync(categoriaSeleccionadaId);
-        mensaje = msg;
-        esExito = ok;
-        await CargarJornadaActual();
+        MostrarMensaje(msg, ok);
+        await CargarJornadas();
     }
 
     private async Task Capturar(int partidoId)
@@ -191,10 +317,52 @@ else
         var (ok, msg) = await CalendarioSvc.ActivarPartidoSinCanchaAsync(partidoId);
         if (!ok)
         {
-            mensaje = msg;
-            esExito = false;
+            MostrarMensaje(msg, false);
             return;
         }
         Navigation.NavigateTo($"/fasefinal/punto-punto/{partidoId}");
+    }
+
+    private async Task AbrirCorreccion(PartidoQueueItem item)
+    {
+        corrigiendoPartidoId = item.Partido.Id;
+
+        var sets = item.Partido.SetsPartidos.OrderBy(s => s.NumeroSet).ToList();
+        s1aC = sets.Count > 0 ? sets[0].PuntosA : 0;
+        s1bC = sets.Count > 0 ? sets[0].PuntosB : 0;
+        s2aC = sets.Count > 1 ? sets[1].PuntosA : 0;
+        s2bC = sets.Count > 1 ? sets[1].PuntosB : 0;
+        s3aC = sets.Count > 2 ? sets[2].PuntosA : 0;
+        s3bC = sets.Count > 2 ? sets[2].PuntosB : 0;
+
+        using var db = await DbFactory.CreateDbContextAsync();
+        var config = await db.Configuracions.FirstOrDefaultAsync(c => c.CategoriaId == item.Partido.CategoriaId);
+        modalidadSetsCorr = config?.ModalidadSets ?? "2 de 3 Sets";
+        puntosJuegoCorr = config?.PuntosJuego ?? 21;
+        puntosLimiteCorr = config?.PuntosLimite ?? 30;
+    }
+
+    private void CancelarCorreccion()
+    {
+        corrigiendoPartidoId = null;
+    }
+
+    private async Task GuardarCorreccion(int partidoId)
+    {
+        bool confirmado = await JS.InvokeAsync<bool>("confirm", "¿Corregir este resultado? Se recalculan las estadísticas de la jornada");
+        if (!confirmado) return;
+
+        var (ok, msg) = await CalendarioSvc.CorregirResultadoAsync(
+            partidoId, s1aC, s1bC, s2aC, s2bC, s3aC, s3bC,
+            modalidadSetsCorr, puntosJuegoCorr, puntosLimiteCorr, nombreUsuarioActual);
+
+        MostrarMensaje(msg, ok);
+
+        if (ok)
+        {
+            corrigiendoPartidoId = null;
+            if (categoriaSeleccionadaId != 0) await CargarJornadas();
+            await CargarUltimosCapturados();
+        }
     }
 }

@@ -267,9 +267,20 @@
         nombreB = string.Join(" / ", partido.CompetidorB.CompetidorIntegrantes.Select(ci => ci.Atleta.Nombre));
 
         var config = await db.Configuracions.FirstOrDefaultAsync(c => c.CategoriaId == partido.CategoriaId);
-        modalidadSets = config?.ModalidadSetsFinal ?? config?.ModalidadSets ?? "2 de 3 Sets";
-        puntosJuego = config?.PuntosJuegoFinal ?? config?.PuntosJuego ?? 21;
-        puntosLimite = config?.PuntosLimiteFinal ?? config?.PuntosLimite ?? 30;
+        bool esFaseFinal = partido.Fase != "Grupos" && partido.Fase != "Liga";
+
+        if (esFaseFinal)
+        {
+            modalidadSets = config?.ModalidadSetsFinal ?? config?.ModalidadSets ?? "2 de 3 Sets";
+            puntosJuego = config?.PuntosJuegoFinal ?? config?.PuntosJuego ?? 21;
+            puntosLimite = config?.PuntosLimiteFinal ?? config?.PuntosLimite ?? 30;
+        }
+        else
+        {
+            modalidadSets = config?.ModalidadSets ?? "2 de 3 Sets";
+            puntosJuego = config?.PuntosJuego ?? 21;
+            puntosLimite = config?.PuntosLimite ?? 30;
+        }
 
         PrepararSaqueInicialSet();
         await CargarEstadoSet();

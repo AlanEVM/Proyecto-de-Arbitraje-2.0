@@ -18,6 +18,13 @@ public class PartidoQueueItem
     public int? CanchaNumero { get; set; }
 }
 
+public class JornadaVista
+{
+    public int Numero { get; set; }
+    public List<PartidoQueueItem> Partidos { get; set; } = new();
+    public string? Descansa { get; set; }
+}
+
 public class CalendarioService
 {
     private readonly IDbContextFactory<TorneoContext> _factory;
@@ -729,15 +736,15 @@ public class CalendarioService
         var categoria = await db.Categorias.FindAsync(partido.CategoriaId);
         var categoriaIds = await db.Categorias.Where(c => c.TorneoId == categoria!.TorneoId).Select(c => c.Id).ToListAsync();
 
-        var ultimoId = await db.Partidos
+        var ultimosIds = await db.Partidos
             .Where(p => categoriaIds.Contains(p.CategoriaId) && p.Estado == "Jugado" && (p.Fase == "Grupos" || p.Fase == "Liga"))
             .OrderByDescending(p => p.FechaCaptura)
             .Take(4)
             .Select(p => p.Id)
-            .FirstOrDefaultAsync();
+            .ToListAsync();
 
-        if (ultimoId != partido.Id)
-            return (false, "Ya se capturaron otros resultados después de este. Solo se puede corregir el último.");
+        if (!ultimosIds.Contains(partido.Id))
+            return (false, "Este resultado ya es muy viejo para corregirse (solo se pueden corregir los últimos 4 capturados en el torneo).");
 
         var compA = partido.CompetidorA;
         var compB = partido.CompetidorB;
@@ -813,27 +820,7 @@ public class CalendarioService
         }).ToList();
     }
 
-    public async Task<List<PartidoQueueItem>> ObtenerPartidosDeJornadaAsync(int categoriaId, int jornada)
-    {
-        using var db = await _factory.CreateDbContextAsync();
-
-        var partidos = await db.Partidos
-            .Include(p => p.CompetidorA).ThenInclude(c => c.CompetidorIntegrantes).ThenInclude(ci => ci.Atleta)
-            .Include(p => p.CompetidorB).ThenInclude(c => c.CompetidorIntegrantes).ThenInclude(ci => ci.Atleta)
-            .Include(p => p.SetsPartidos)
-            .Where(p => p.CategoriaId == categoriaId && p.Fase == "Liga" && p.Jornada == jornada)
-            .OrderBy(p => p.Id)
-            .ToListAsync();
-
-        return partidos.Select(p => new PartidoQueueItem
-        {
-            Partido = p,
-            NombreA = string.Join(" / ", p.CompetidorA.CompetidorIntegrantes.Select(ci => ci.Atleta.Nombre)),
-            NombreB = string.Join(" / ", p.CompetidorB.CompetidorIntegrantes.Select(ci => ci.Atleta.Nombre))
-        }).ToList();
-    }
-
-    public async Task<string?> ObtenerAtletaQueDescansaAsync(int categoriaId, int jornada)
+    public async Task<List<JornadaVista>> ObtenerJornadasDeCategoriaAsync(int categoriaId)
     {
         using var db = await _factory.CreateDbContextAsync();
 
@@ -842,15 +829,39 @@ public class CalendarioService
             .Include(c => c.CompetidorIntegrantes).ThenInclude(ci => ci.Atleta)
             .ToListAsync();
 
-        var idsEnJornada = (await db.Partidos
-            .Where(p => p.CategoriaId == categoriaId && p.Fase == "Liga" && p.Jornada == jornada)
-            .Select(p => new { p.CompetidorAid, p.CompetidorBid })
-            .ToListAsync())
-            .SelectMany(p => new[] { p.CompetidorAid, p.CompetidorBid })
-            .ToHashSet();
+        var partidos = await db.Partidos
+            .Include(p => p.CompetidorA).ThenInclude(c => c.CompetidorIntegrantes).ThenInclude(ci => ci.Atleta)
+            .Include(p => p.CompetidorB).ThenInclude(c => c.CompetidorIntegrantes).ThenInclude(ci => ci.Atleta)
+            .Include(p => p.SetsPartidos)
+            .Where(p => p.CategoriaId == categoriaId && p.Fase == "Liga" && p.Jornada != null)
+            .OrderBy(p => p.Jornada).ThenBy(p => p.Id)
+            .AsSplitQuery()
+            .ToListAsync();
 
-        var descansa = activos.FirstOrDefault(c => !idsEnJornada.Contains(c.Id));
-        return descansa == null ? null : string.Join(" / ", descansa.CompetidorIntegrantes.Select(ci => ci.Atleta.Nombre));
+        return partidos
+            .GroupBy(p => p.Jornada!.Value)
+            .OrderBy(g => g.Key)
+            .Select(g =>
+            {
+                var idsEnJornada = g.SelectMany(p => new[] { p.CompetidorAid, p.CompetidorBid }).ToHashSet();
+                var descansa = activos.FirstOrDefault(c => !idsEnJornada.Contains(c.Id));
+
+                return new JornadaVista
+                {
+                    Numero = g.Key,
+                    Partidos = g.Select(p => new PartidoQueueItem
+                    {
+                        Partido = p,
+                        NombreA = string.Join(" / ", p.CompetidorA.CompetidorIntegrantes.Select(ci => ci.Atleta.Nombre)),
+                        NombreB = string.Join(" / ", p.CompetidorB.CompetidorIntegrantes.Select(ci => ci.Atleta.Nombre)),
+                        Jornada = g.Key
+                    }).ToList(),
+                    Descansa = descansa == null
+                        ? null
+                        : string.Join(" / ", descansa.CompetidorIntegrantes.Select(ci => ci.Atleta.Nombre))
+                };
+            })
+            .ToList();
     }
 
     public async Task<(bool ok, string mensaje)> ActivarPartidoSinCanchaAsync(int partidoId)
