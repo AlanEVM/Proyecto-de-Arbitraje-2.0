@@ -1750,6 +1750,13 @@ h1:focus {
     font-weight: 600;
 }
 
+    .jf-celda[data-set]:empty::before {
+        content: attr(data-set);
+        font-size: 0.7rem;
+        font-weight: 500;
+        color: #9AA5A2;
+    }
+
 .jf-accion {
     grid-area: acc;
 }

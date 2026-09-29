@@ -90,7 +90,7 @@ else
                                 <div class="jf-sets jf-sets-a">
                                     @for (int s = 0; s < numSets; s++)
                                     {
-                                        <span class="jf-celda">@Celda(item, s, true)</span>
+                                        <span class="jf-celda" data-set="@(numSets > 1 ? $"S{s + 1}" : null)">@Celda(item, s, true)</span>
                                     }
                                 </div>
 
@@ -99,7 +99,7 @@ else
                                 <div class="jf-sets jf-sets-b">
                                     @for (int s = 0; s < numSets; s++)
                                     {
-                                        <span class="jf-celda">@Celda(item, s, false)</span>
+                                        <span class="jf-celda" data-set="@(numSets > 1 ? $"S{s + 1}" : null)">@Celda(item, s, false)</span>
                                     }
                                 </div>
 
