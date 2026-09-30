@@ -278,6 +278,7 @@
         public string Equipo { get; set; } = "";
         public int Pg { get; set; }
         public int Pp { get; set; }
+        public int Pj => Pg + Pp;   // <-- nueva
         public int Sg { get; set; }
         public int Sp { get; set; }
         public int Ds => Sg - Sp;
@@ -795,6 +796,7 @@
                 <tr>
                     <th>@EtiquetaCompetidor</th>
                     <th>Equipo</th>
+                    <th>PJ</th>
                     <th>PG</th>
                     <th>PP</th>
                     <th>SG</th>
@@ -811,6 +813,7 @@
                     <tr>
                         <td>@f.Nombre</td>
                         <td>@f.Equipo</td>
+                        <td>@f.Pj</td>
                         <td>@f.Pg</td>
                         <td>@f.Pp</td>
                         <td>@f.Sg</td>
@@ -833,6 +836,7 @@
                     <th>Posición</th>
                     <th>@EtiquetaCompetidor</th>
                     <th>Equipo</th>
+                    <th>PJ</th>
                     <th>PG</th>
                     <th>PP</th>
                     <th>SG</th>
@@ -850,6 +854,7 @@
                         <td>@f.PosicionTexto</td>
                         <td>@f.Nombre</td>
                         <td>@f.Equipo</td>
+                        <td>@f.Pj</td>
                         <td>@f.Pg</td>
                         <td>@f.Pp</td>
                         <td>@f.Sg</td>

@@ -103,6 +103,20 @@ public class FaseFinalService
                 return (false, "Todavía hay partidos de grupos sin jugar. Termina la fase de grupos antes de generar la fase final.");
             }
 
+            if (categoria.Formato == "GruposFaseFinal")
+            {
+                var activosGrupos = await db.Competidores
+                    .Where(c => c.CategoriaId == categoriaId && c.Activo && c.GrupoId != null)
+                    .ToListAsync();
+
+                // Los empates se revisan dentro de cada grupo
+                if (activosGrupos.GroupBy(c => c.GrupoId).Any(g => HayEmpatesSinResolver(g)))
+                {
+                    await transaccion.RollbackAsync();
+                    return (false, MensajeEmpatesPendientes);
+                }
+            }
+
             var calificados = await ObtenerClasificadosAsync(db, categoriaId, categoria);
             if (calificados.Count < 2)
             {
@@ -154,6 +168,17 @@ public class FaseFinalService
         string detalleByes = byes > 0 ? $", {byes} con bye" : "";
         return (true, $"Bracket generado: {fase} con {n} competidores{detalleByes}.");
     }
+
+    // Mismo criterio que "Posiciones": empate = mismos PG, ±Sets y ±Puntos,
+    // y pendiente si alguno de los empatados todavía no tiene OrdenDesempate.
+    private static bool HayEmpatesSinResolver(IEnumerable<Competidore> competidores) =>
+        competidores
+            .GroupBy(c => (c.Pg, Ds: c.Sg - c.Sp, Dp: c.Pf - c.Pc))
+            .Any(g => g.Count() > 1 && g.Any(c => c.OrdenDesempate == null));
+
+    private const string MensajeEmpatesPendientes =
+        "Hay atletas empatados (mismos PG, ±Sets y ±Puntos) sin desempate. " +
+        "Entra a Posiciones y usa \"Sortear empates\" antes de generar la fase final.";
 
     private static string FaseSegunTamano(int bracketSize) => bracketSize switch
     {
@@ -1000,6 +1025,12 @@ public class FaseFinalService
             }
 
             var competidores = await db.Competidores.Where(c => c.CategoriaId == categoriaId && c.Activo).ToListAsync();
+
+            if (HayEmpatesSinResolver(competidores))
+            {
+                await transaccion.RollbackAsync();
+                return (false, MensajeEmpatesPendientes);
+            }
 
             var tabla = competidores
                 .OrderByDescending(c => c.Pg)

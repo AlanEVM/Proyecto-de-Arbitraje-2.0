@@ -805,6 +805,119 @@
         await CargarCompetidores();
     }
 
+    private string GeneroPorRama(string? generoElegido) => categoriaActiva!.Rama switch
+    {
+        "Varonil" => "M",
+        "Femenil" => "F",
+        _ => generoElegido ?? ""
+    };
+
+    private static string TextoGenero(string? g) => g == "M" ? "Hombre" : g == "F" ? "Mujer" : "(sin definir)";
+
+    private string NombreMunicipio(int id) => municipios?.FirstOrDefault(m => m.Id == id)?.Nombre ?? "(sin definir)";
+
+    // Todos los campos de un atleta NUEVO son obligatorios. Devuelve el error, o null si todo está bien.
+    private string? ValidarDatosAtletaNuevo(string quien, string nombre, int municipioId, string genero, int? anio)
+    {
+        if (string.IsNullOrWhiteSpace(nombre)) return $"{quien}: escribe el nombre completo.";
+        if (municipioId == 0) return $"{quien}: selecciona el municipio.";
+        if (string.IsNullOrEmpty(genero)) return $"{quien}: selecciona el género.";
+        if (anio == null) return $"{quien}: indica el año de nacimiento.";
+        if (anio < DateTime.Now.Year - 99 || anio > DateTime.Now.Year)
+            return $"{quien}: el año de nacimiento debe estar entre {DateTime.Now.Year - 99} y {DateTime.Now.Year}.";
+        return null;
+    }
+
+    private string ResumenAtletaNuevo(string titulo, string nombre, int municipioId, string genero, int? anio) =>
+        $"{titulo}:\n  Nombre: {nombre}\n  Municipio: {NombreMunicipio(municipioId)}\n  Género: {TextoGenero(genero)}\n  Año de nacimiento: {anio}";
+
+    private string? ValidarIntegranteNuevo(IntegranteFormulario i, string quien)
+    {
+        if (!i.EsNuevo)
+            return i.AtletaExistenteId == 0 ? $"{quien}: selecciona un atleta existente." : null;
+
+        return ValidarDatosAtletaNuevo(quien, i.NuevoNombre, i.NuevoMunicipioId, GeneroPorRama(i.NuevoGenero), i.AnioNacimiento);
+    }
+
+    private string ResumenIntegrante(string titulo, IntegranteFormulario i)
+    {
+        if (!i.EsNuevo)
+        {
+            var a = atletasDisponibles?.FirstOrDefault(x => x.Id == i.AtletaExistenteId);
+            return a == null
+                ? $"{titulo}: (no encontrado)"
+                : $"{titulo} (YA REGISTRADO):\n  Nombre: {a.Nombre}\n  Municipio: {a.Municipio?.Nombre}\n  Género: {TextoGenero(a.Genero)}\n  Año de nacimiento: {a.AnioNacimiento?.ToString() ?? "(sin definir)"}";
+        }
+
+        return ResumenAtletaNuevo($"{titulo} (NUEVO)", i.NuevoNombre.Trim(), i.NuevoMunicipioId, GeneroPorRama(i.NuevoGenero), i.AnioNacimiento)
+            + AvisoParecidas(i.NuevoNombre.Trim());
+    }
+
+    private static string NormalizarNombre(string s)
+    {
+        var descompuesto = s.Trim().ToLowerInvariant().Normalize(System.Text.NormalizationForm.FormD);
+        var sb = new System.Text.StringBuilder();
+        foreach (var c in descompuesto)
+            if (System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c) != System.Globalization.UnicodeCategory.NonSpacingMark)
+                sb.Append(c);
+        return string.Join(' ', sb.ToString().Split(' ', StringSplitOptions.RemoveEmptyEntries));
+    }
+
+    // Distancia de edición (cuántas letras hay que cambiar para pasar de un texto a otro)
+    private static int Distancia(string a, string b)
+    {
+        var prev = new int[b.Length + 1];
+        var curr = new int[b.Length + 1];
+        for (int j = 0; j <= b.Length; j++) prev[j] = j;
+
+        for (int i = 1; i <= a.Length; i++)
+        {
+            curr[0] = i;
+            for (int j = 1; j <= b.Length; j++)
+            {
+                int costo = a[i - 1] == b[j - 1] ? 0 : 1;
+                curr[j] = Math.Min(Math.Min(curr[j - 1] + 1, prev[j] + 1), prev[j - 1] + costo);
+            }
+            (prev, curr) = (curr, prev);
+        }
+        return prev[b.Length];
+    }
+
+    private List<Atleta> BuscarAtletasParecidas(string nombreNuevo)
+    {
+        var nuevo = NormalizarNombre(nombreNuevo);
+        if (nuevo.Length == 0) return new();
+        var tokensNuevo = nuevo.Split(' ').Where(t => t.Length >= 3).ToArray();
+
+        return (atletasDisponibles ?? new List<Atleta>())
+            .Select(a =>
+            {
+                var existente = NormalizarNombre(a.Nombre);
+                var tokensExistente = existente.Split(' ');
+                int distancia = Distancia(nuevo, existente);
+                int compartidos = tokensNuevo.Count(t => tokensExistente.Any(e => Distancia(t, e) <= (t.Length >= 5 ? 1 : 0)));
+
+                bool casiIgual = distancia <= Math.Max(2, nuevo.Length / 6);
+                bool comparteVarios = compartidos >= 2 || (tokensNuevo.Length == 1 && compartidos == 1);
+                return (a, distancia, parecida: casiIgual || comparteVarios);
+            })
+            .Where(x => x.parecida)
+            .OrderBy(x => x.distancia)
+            .Take(5)
+            .Select(x => x.a)
+            .ToList();
+    }
+
+    private string AvisoParecidas(string nombre)
+    {
+        var parecidas = BuscarAtletasParecidas(nombre);
+        if (parecidas.Count == 0) return "";
+
+        return "\n\nATENCIÓN: ya existen atletas con nombre parecido:\n" +
+               string.Join("\n", parecidas.Select(a => $"  • {a.Nombre} — {a.Municipio?.Nombre} — {(a.AnioNacimiento?.ToString() ?? "sin año")}")) +
+               "\nSi es la misma persona, cancela y elige \"Atleta ya registrado\".";
+    }
+
     private async Task RegistrarAtleta()
     {
         if (categoriaActiva?.RegistroCerrado == true) {  mensajeError = "El registro de esta categoría está cerrado."; return; }
@@ -831,12 +944,20 @@
                 return;
             }
 
+            bool confirmaExistente = await JS.InvokeAsync<bool>("confirm",
+                $"¿Seguro que quieres agregar a este atleta a la categoría '{categoriaActiva.Nombre}' ({categoriaActiva.Modalidad} {categoriaActiva.Rama}) del torneo '{TorneoActual.NombreTorneo}'?\n\n" +
+                $"  Nombre: {atletaExistente.Nombre}\n" +
+                $"  Municipio: {atletaExistente.Municipio?.Nombre}\n" +
+                $"  Género: {TextoGenero(atletaExistente.Genero)}\n" +
+                $"  Año de nacimiento: {atletaExistente.AnioNacimiento?.ToString() ?? "(sin definir)"}");
+            if (!confirmaExistente) return;
+
             atleta = atletaExistente;
         }
         else
         {
-            if (string.IsNullOrWhiteSpace(nuevoNombreAtleta)) { mensajeError = "Ponle un nombre al atleta."; return; }
-            if (municipioSeleccionadoId == 0) { mensajeError = "Selecciona un municipio."; return; }
+            var errorCampos = ValidarDatosAtletaNuevo("Atleta", nuevoNombreAtleta, municipioSeleccionadoId, GeneroPorRama(generoSeleccionado), anioNacimientoNuevo);
+            if (errorCampos != null) { mensajeError = errorCampos; return; }
             if (categoriaActiva!.Rama == "Varonil" && generoSeleccionado == "F") { mensajeError = "Esta categoría es Varonil."; return; }
             if (categoriaActiva.Rama == "Femenil" && generoSeleccionado == "M") { mensajeError = "Esta categoría es Femenil."; return; }
 
@@ -846,6 +967,13 @@
                 mensajeError = $"Esta categoría solo admite nacidos entre {aniosPermitidosNuevo.Min()} y {aniosPermitidosNuevo.Max()}.";
                 return;
             }
+
+            string resumen = ResumenAtletaNuevo("Atleta NUEVO", nuevoNombreAtleta.Trim(), municipioSeleccionadoId, GeneroPorRama(generoSeleccionado), anioNacimientoNuevo)
+               + AvisoParecidas(nuevoNombreAtleta.Trim());
+            bool datosCorrectos = await JS.InvokeAsync<bool>("confirm",
+                $"Vas a registrar un atleta NUEVO en '{categoriaActiva.Nombre}' del torneo '{TorneoActual.NombreTorneo}':\n\n{resumen}\n\n" +
+                "¿Los datos son correctos?\n(Si esta persona ya estaba registrada, cancela y usa \"Atleta ya registrado\" para no duplicarla.)");
+            if (!datosCorrectos) return;
 
             string nombreFinalAtleta = nuevoNombreAtleta.Trim();
             string? generoFinalAtleta = string.IsNullOrEmpty(generoSeleccionado) ? null : generoSeleccionado;
@@ -947,6 +1075,17 @@
         mensajeError = ""; mensajeExito = "";
 
         using var db = await DbFactory.CreateDbContextAsync();
+
+        // Validar campos de los integrantes ANTES de crear a nadie en la base
+        var errorCampos = ValidarIntegranteNuevo(integrante1, "Integrante 1") ?? ValidarIntegranteNuevo(integrante2, "Integrante 2");
+        if (errorCampos != null) { mensajeError = errorCampos; return; }
+
+        bool datosCorrectos = await JS.InvokeAsync<bool>("confirm",
+            $"Vas a registrar esta pareja en '{categoriaActiva!.Nombre}' del torneo '{TorneoActual.NombreTorneo}':\n\n" +
+            $"{ResumenIntegrante("Integrante 1", integrante1)}\n\n" +
+            $"{ResumenIntegrante("Integrante 2", integrante2)}\n\n" +
+            "¿Los datos son correctos?");
+        if (!datosCorrectos) return;
 
         var (atleta1, error1) = await ResolverAtleta(db, integrante1);
         if (error1 != null) { mensajeError = error1; return; }

@@ -16,7 +16,11 @@ QuestPDF.Settings.License = QuestPDF.Infrastructure.LicenseType.Community;
 
 // Add services to the container.
 builder.Services.AddRazorComponents()
-    .AddInteractiveServerComponents();
+    .AddInteractiveServerComponents(options =>
+    {
+        // Por defecto son 3 min. Si vuelves antes, regresas a la misma pantalla sin recargar.
+        options.DisconnectedCircuitRetentionPeriod = TimeSpan.FromMinutes(10);
+    });
 
 builder.Services.AddDbContextFactory<TorneoContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("TorneoBadminton")));

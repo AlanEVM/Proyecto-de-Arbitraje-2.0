@@ -170,7 +170,7 @@ public class ExportService
     private async Task HojaPosicionesAsync(XLWorkbook wb, TorneoContext db, int torneoId)
     {
         var ws = wb.Worksheets.Add("Posiciones");
-        Encabezado(ws, "Categoría", "Grupo", "Atleta/Pareja", "Equipo", "PG", "PP", "SG", "SP", "±S", "PF", "PC", "±P");
+        Encabezado(ws, "Categoría", "Grupo", "Atleta/Pareja", "Equipo", "PJ", "PG", "PP", "SG", "SP", "±S", "PF", "PC", "±P");
 
         var categorias = await db.Categorias
             .Where(c => c.TorneoId == torneoId &&
@@ -235,14 +235,15 @@ public class ExportService
         ws.Cell(fila, 2).Value = grupoTexto;
         ws.Cell(fila, 3).Value = nombre;
         ws.Cell(fila, 4).Value = equipo;
-        ws.Cell(fila, 5).Value = c.Pg;
-        ws.Cell(fila, 6).Value = c.Pp;
-        ws.Cell(fila, 7).Value = c.Sg;
-        ws.Cell(fila, 8).Value = c.Sp;
-        ws.Cell(fila, 9).Value = c.Sg - c.Sp; 
-        ws.Cell(fila, 10).Value = c.Pf;
-        ws.Cell(fila, 11).Value = c.Pc;
-        ws.Cell(fila, 12).Value = c.Pf - c.Pc;
+        ws.Cell(fila, 5).Value = c.Pg + c.Pp;   // PJ (nueva)
+        ws.Cell(fila, 6).Value = c.Pg;
+        ws.Cell(fila, 7).Value = c.Pp;
+        ws.Cell(fila, 8).Value = c.Sg;
+        ws.Cell(fila, 9).Value = c.Sp;
+        ws.Cell(fila, 10).Value = c.Sg - c.Sp;
+        ws.Cell(fila, 11).Value = c.Pf;
+        ws.Cell(fila, 12).Value = c.Pc;
+        ws.Cell(fila, 13).Value = c.Pf - c.Pc;
         fila++;
     }
 

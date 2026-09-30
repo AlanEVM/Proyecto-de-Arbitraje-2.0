@@ -1,15 +1,37 @@
 ﻿@inherits LayoutComponentBase
+@inject ProyectoArbitraje.Services.TorneoActualService TorneoActual
+@inject NavigationManager Nav
 
 <div class="app-shell">
     <NavMenu />
 
     <main class="app-content">
-        @Body
+        @if (restaurado)
+        {
+            @Body
+        }
     </main>
 </div>
 
 <div id="blazor-error-ui" data-nosnippet>
-    An unhandled error has occurred.
-    <a href="." class="reload">Reload</a>
+    Ocurrió un error inesperado.
+    <a href="." class="reload">Recargar</a>
     <span class="dismiss">🗙</span>
 </div>
+
+@code {
+    private bool restaurado;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+
+        // En la página de inicio no se restaura: ahí se elige el torneo a mano.
+        var ruta = Nav.ToBaseRelativePath(Nav.Uri);
+        bool enInicio = ruta == "" || ruta.StartsWith("?") || ruta.StartsWith("#");
+        if (!enInicio) await TorneoActual.RestaurarAsync();
+
+        restaurado = true;
+        StateHasChanged();
+    }
+}
