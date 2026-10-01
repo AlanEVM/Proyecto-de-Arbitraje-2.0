@@ -1,0 +1,283 @@
+﻿@page "/grupos"
+@implements IDisposable
+@using ProyectoArbitraje.Data
+@using ProyectoArbitraje.Models
+@using ProyectoArbitraje.Services
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<TorneoContext> DbFactory
+@inject TorneoActualService TorneoActual
+@inject TorneoEventBus EventBus
+
+<PageTitle>Grupos</PageTitle>
+
+@if (TorneoActual.TorneoId == null)
+{
+    <div class="pagina">
+        <p class="vacio">No hay un torneo activo. <a href="">Ve a Inicio</a> y entra a uno primero.</p>
+    </div>
+    return;
+}
+
+<div class="pagina">
+    <div class="tarjeta-marcador pagina-header">
+        <h1>Grupos - @TorneoActual.NombreTorneo</h1>
+        @if (categoriaActiva != null)
+        {
+            <p class="pagina-subtitulo" style="font-size:1.1rem; font-weight:600; margin-top:6px;">
+                @categoriaActiva.Nombre · @categoriaActiva.Modalidad · @categoriaActiva.Rama
+            </p>
+        }
+    </div>
+
+    <div class="tarjeta">
+        <label>Categoría:</label>
+        <select @bind="categoriaSeleccionadaId" @bind:after="OnCategoriaSeleccionada">
+            <option value="0">-- Selecciona categoría --</option>
+            @if (categorias != null)
+            {
+                @foreach (var c in categorias)
+                {
+                    <option value="@c.Id">@c.Nombre · @c.Modalidad · @c.Rama</option>
+                }
+            }
+        </select>
+
+        @if (categorias != null && !categorias.Any())
+        {
+            <p class="nota">Este torneo no tiene categorías con formato de grupos.</p>
+        }
+    </div>
+
+    @if (categoriaActiva != null)
+    {
+        @if (!grupos.Any())
+        {
+            <div class="tarjeta">
+                <p class="vacio">Esta categoría todavía no tiene grupos formados.</p>
+            </div>
+        }
+        else
+        {
+            @foreach (var g in grupos)
+            {
+                <div class="tarjeta">
+                    <h2>@g.Titulo</h2>
+                    <div class="grupo-matriz-wrap">
+                        @RenderMatriz(g)
+                    </div>
+                </div>
+            }
+        }
+    }
+</div>
+
+@code {
+    private List<Categoria>? categorias;
+    private int categoriaSeleccionadaId;
+    private Categoria? categoriaActiva;
+
+    private List<GrupoVista> grupos = new();
+    private Dictionary<(int Fila, int Col), CeldaVista> celdas = new();
+
+    private class GrupoVista
+    {
+        public string Titulo { get; set; } = "";
+        public string Letra { get; set; } = "";
+        public List<CompetidorVista> Competidores { get; set; } = new();
+    }
+
+    private class CompetidorVista
+    {
+        public int Id { get; set; }
+        public string Nombre { get; set; } = "";
+        public string Equipo { get; set; } = "";
+    }
+
+    // Resultado de un partido visto desde la fila: Propio = puntos del competidor de la fila.
+    private class CeldaVista
+    {
+        public bool EnJuego { get; set; }
+        public bool EsDefault { get; set; }
+        public bool Gano { get; set; }
+        public List<(int Propio, int Rival)> Sets { get; set; } = new();
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (TorneoActual.TorneoId == null) return;
+
+        await CargarCategorias();
+        EventBus.OnCambio += ManejarCambioExterno;
+    }
+
+    private void ManejarCambioExterno()
+    {
+        _ = InvokeAsync(async () =>
+        {
+            await CargarCategorias();
+            categoriaActiva = categorias?.FirstOrDefault(c => c.Id == categoriaSeleccionadaId);
+
+            if (categoriaActiva != null) await CargarGrupos();
+            else { grupos = new(); celdas = new(); }
+
+            StateHasChanged();
+        });
+    }
+
+    public void Dispose()
+    {
+        EventBus.OnCambio -= ManejarCambioExterno;
+    }
+
+    private async Task CargarCategorias()
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        categorias = await db.Categorias
+            .Where(c => c.TorneoId == TorneoActual.TorneoId && c.Formato == "GruposFaseFinal")
+            .OrderBy(c => c.Nombre)
+            .ToListAsync();
+    }
+
+    private async Task OnCategoriaSeleccionada()
+    {
+        categoriaActiva = categorias?.FirstOrDefault(c => c.Id == categoriaSeleccionadaId);
+        grupos = new();
+        celdas = new();
+
+        if (categoriaActiva != null) await CargarGrupos();
+    }
+
+    private static CompetidorVista ArmarCompetidor(Competidore c) => new CompetidorVista
+    {
+        Id = c.Id,
+        Nombre = string.Join(" / ", c.CompetidorIntegrantes.Select(ci => ci.Atleta.Nombre)),
+        Equipo = string.Join(" / ", c.CompetidorIntegrantes.Select(ci => ci.Atleta.Municipio.Abreviacion).Distinct())
+    };
+
+    private async Task CargarGrupos()
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+
+        var gruposBD = await db.Grupos
+            .Where(g => g.CategoriaId == categoriaSeleccionadaId)
+            .OrderBy(g => g.Letra)
+            .ToListAsync();
+
+        var competidores = await db.Competidores
+            .Where(c => c.CategoriaId == categoriaSeleccionadaId && c.Activo && c.GrupoId != null)
+            .Include(c => c.CompetidorIntegrantes).ThenInclude(ci => ci.Atleta).ThenInclude(a => a.Municipio)
+            .OrderBy(c => c.Id)
+            .ToListAsync();
+
+        var partidos = await db.Partidos
+            .Where(p => p.CategoriaId == categoriaSeleccionadaId
+                     && p.Fase == "Grupos"
+                     && (p.Estado == "Jugado" || p.Estado == "EnCancha"))
+            .Include(p => p.SetsPartidos)
+            .ToListAsync();
+
+        // Cada partido llena DOS celdas: una desde la perspectiva de cada competidor
+        var nuevasCeldas = new Dictionary<(int Fila, int Col), CeldaVista>();
+        foreach (var p in partidos)
+        {
+            var sets = p.SetsPartidos.OrderBy(s => s.NumeroSet).ToList();
+            bool jugado = p.Estado == "Jugado";
+
+            nuevasCeldas[(p.CompetidorAid, p.CompetidorBid)] = new CeldaVista
+            {
+                EnJuego = !jugado,
+                EsDefault = p.EsDefault,
+                Gano = jugado && p.GanadorId == p.CompetidorAid,
+                Sets = sets.Select(s => (Propio: s.PuntosA, Rival: s.PuntosB)).ToList()
+            };
+
+            nuevasCeldas[(p.CompetidorBid, p.CompetidorAid)] = new CeldaVista
+            {
+                EnJuego = !jugado,
+                EsDefault = p.EsDefault,
+                Gano = jugado && p.GanadorId == p.CompetidorBid,
+                Sets = sets.Select(s => (Propio: s.PuntosB, Rival: s.PuntosA)).ToList()
+            };
+        }
+
+        var vistas = gruposBD
+            .Select(g => new GrupoVista
+            {
+                Titulo = $"Grupo {g.Letra}",
+                Letra = g.Letra,
+                Competidores = competidores.Where(c => c.GrupoId == g.Id).Select(ArmarCompetidor).ToList()
+            })
+            .Where(g => g.Competidores.Any())
+            .ToList();
+
+        celdas = nuevasCeldas;
+        grupos = vistas;
+    }
+
+    private RenderFragment RenderMatriz(GrupoVista g) => __builder =>
+    {
+        <table class="grupo-matriz">
+            <thead>
+                <tr>
+                    <th class="g-esquina"></th>
+                    @foreach (var col in g.Competidores)
+                    {
+                        <th class="g-col">
+                            @col.Nombre
+                            <span class="g-eq">@col.Equipo</span>
+                        </th>
+                    }
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var fila in g.Competidores)
+                {
+                    <tr>
+                        <th class="g-fila">
+                            @fila.Nombre
+                            <span class="g-eq">@fila.Equipo</span>
+                        </th>
+                        @foreach (var col in g.Competidores)
+                        {
+                            @RenderCelda(fila.Id, col.Id)
+                        }
+                    </tr>
+                }
+            </tbody>
+        </table>
+    };
+
+    private RenderFragment RenderCelda(int filaId, int colId) => __builder =>
+    {
+        if (filaId == colId)
+        {
+            <td class="g-celda g-diag"></td>
+        }
+        else if (!celdas.TryGetValue((filaId, colId), out var celda))
+        {
+            <td class="g-celda"></td>
+        }
+        else
+        {
+            string clase = celda.EnJuego ? "g-enjuego" : celda.Gano ? "g-gana" : "g-pierde";
+
+            <td class="g-celda @clase">
+                @if (celda.EnJuego)
+                {
+                    <span class="g-nota">En juego</span>
+                }
+                else if (celda.EsDefault)
+                {
+                    <span class="g-nota">@(celda.Gano ? "Gana (default)" : "Pierde (default)")</span>
+                }
+                else
+                {
+                    @foreach (var s in celda.Sets)
+                    {
+                        <div class="g-set">@(s.Propio)/@(s.Rival)</div>
+                    }
+                }
+            </td>
+        }
+    };
+}

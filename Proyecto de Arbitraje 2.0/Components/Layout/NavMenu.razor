@@ -122,6 +122,11 @@
         else
         {
             <NavLink class="topbar-link" href="calendario">Calendario</NavLink>
+
+            @if (TorneoActual.ModalidadTorneo == "GruposFaseFinal")
+            {
+                <NavLink class="topbar-link" href="grupos">Grupos</NavLink>
+            }
         }
         <NavLink class="topbar-link" href="fasefinal">Fase Final</NavLink>
         @if (TorneoActual.ModalidadTorneo != "Jornadas")

@@ -154,6 +154,39 @@
         await CargarTorneos();
     }
 
+    private static async Task<(int eliminados, int conservados)> LimpiarAtletasSueltasAsync(ProyectoArbitraje.Data.TorneoContext db, IEnumerable<int> atletaIds)
+    {
+        int eliminados = 0, conservados = 0;
+
+        foreach (var atletaId in atletaIds.Distinct())
+        {
+            bool sigueEnOtroLado =
+                await db.CompetidorIntegrantes.AnyAsync(ci => ci.AtletaId == atletaId) ||
+                await db.RankingHistorials.AnyAsync(r => r.AtletaId == atletaId) ||
+                await db.PuntosPartido.AnyAsync(pp => pp.SirveAtletaId == atletaId || pp.RecibeAtletaId == atletaId);
+
+            if (sigueEnOtroLado) { conservados++; continue; }
+
+            try
+            {
+                var atleta = await db.Atletas.FindAsync(atletaId);
+                if (atleta != null)
+                {
+                    db.Atletas.Remove(atleta);
+                    await db.SaveChangesAsync();
+                    eliminados++;
+                }
+            }
+            catch (DbUpdateException)
+            {
+                db.ChangeTracker.Clear();
+                conservados++;
+            }
+        }
+
+        return (eliminados, conservados);
+    }
+
     private async Task EliminarTorneo(Torneo t)
     {
         using var db = await DbFactory.CreateDbContextAsync();
@@ -166,8 +199,12 @@
         }
 
         bool confirmado = await JS.InvokeAsync<bool>("confirm",
-            $"¿Seguro que quieres eliminar el torneo '{t.Nombre}'? Esto borra TODOS sus datos de forma permanente.");
+            $"¿Seguro que quieres eliminar el torneo '{t.Nombre}'?\n\n" +
+            "Se borrarán TODOS sus datos: categorías, partidos, resultados y ranking. Los atletas que no estén registrados en ningún otro torneo " +
+            "también se eliminarán del catálogo; los demás se conservan.\n\nEsta acción es permanente.");
         if (!confirmado) return;
+
+        var atletaIds = new List<int>();
 
         using var transaccion = await db.Database.BeginTransactionAsync();
         try
@@ -175,13 +212,27 @@
             var categoriaIds = await db.Categorias.Where(c => c.TorneoId == t.Id).Select(c => c.Id).ToListAsync();
 
             var partidoIds = await db.Partidos.Where(p => categoriaIds.Contains(p.CategoriaId)).Select(p => p.Id).ToListAsync();
+
+            var puntosABorrar = await db.PuntosPartido.Where(pp => partidoIds.Contains(pp.PartidoId)).ToListAsync();
+            db.PuntosPartido.RemoveRange(puntosABorrar);
+
             var setsABorrar = await db.SetsPartidos.Where(s => partidoIds.Contains(s.PartidoId)).ToListAsync();
             db.SetsPartidos.RemoveRange(setsABorrar);
+
+            var byesABorrar = await db.ByesFaseFinal.Where(b => categoriaIds.Contains(b.CategoriaId)).ToListAsync();
+            db.ByesFaseFinal.RemoveRange(byesABorrar);
 
             var partidosABorrar = await db.Partidos.Where(p => categoriaIds.Contains(p.CategoriaId)).ToListAsync();
             db.Partidos.RemoveRange(partidosABorrar);
 
             var competidorIds = await db.Competidores.Where(c => categoriaIds.Contains(c.CategoriaId)).Select(c => c.Id).ToListAsync();
+
+            atletaIds = await db.CompetidorIntegrantes
+                .Where(ci => competidorIds.Contains(ci.CompetidorId))
+                .Select(ci => ci.AtletaId)
+                .Distinct()
+                .ToListAsync();
+
             var integrantesABorrar = await db.CompetidorIntegrantes.Where(ci => competidorIds.Contains(ci.CompetidorId)).ToListAsync();
             db.CompetidorIntegrantes.RemoveRange(integrantesABorrar);
 
@@ -214,6 +265,10 @@
             await JS.InvokeAsync<object>("alert", "Ocurrió un error al eliminar el torneo. No se borró nada.");
             return;
         }
+
+        var (atletasEliminadas, atletasConservadas) = await LimpiarAtletasSueltasAsync(db, atletaIds);
+        await JS.InvokeAsync<object>("alert",
+            $"Torneo eliminado. {atletasEliminadas} atleta(s) que no estaban en ningún otro torneo también se eliminaron del catálogo; {atletasConservadas} se conservan por estar registrados en otro lado.");
 
         if (TorneoActual.TorneoId == t.Id)
         {

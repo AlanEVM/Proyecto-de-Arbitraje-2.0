@@ -25,6 +25,12 @@
 <div class="pagina">
     <div class="tarjeta-marcador pagina-header">
         <h1>Posiciones - @TorneoActual.NombreTorneo</h1>
+        @if (categoriaActiva != null)
+        {
+            <p class="pagina-subtitulo" style="font-size:1.1rem; font-weight:600; margin-top:6px;">
+                @categoriaActiva.Nombre · @categoriaActiva.Modalidad · @categoriaActiva.Rama
+            </p>
+        }
     </div>
 
     <div class="tarjeta">
@@ -52,6 +58,11 @@
 
     @if (categoriaActiva != null)
     {
+        <div class="solo-impresion">
+            <h1>Posiciones - @TorneoActual.NombreTorneo</h1>
+            <p>@categoriaActiva.Nombre · @categoriaActiva.Modalidad · @categoriaActiva.Rama</p>
+        </div>
+
         @if (categoriaActiva.Formato == "GruposFaseFinal")
         {
             @if (podioGeneral != null && podioGeneral.Any())

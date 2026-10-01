@@ -29,7 +29,7 @@
         <h1>Calendario - @TorneoActual.NombreTorneo</h1>
     </div>
 
-    @if (!string.IsNullOrEmpty(errorDebug))
+    @if (!esSoloLectura && !string.IsNullOrEmpty(errorDebug))
     {
         <div class="tarjeta">
             <p class="mensaje-error">Ocurrió un error:</p>

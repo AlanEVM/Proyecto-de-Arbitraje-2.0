@@ -969,7 +969,7 @@
             }
 
             string resumen = ResumenAtletaNuevo("Atleta NUEVO", nuevoNombreAtleta.Trim(), municipioSeleccionadoId, GeneroPorRama(generoSeleccionado), anioNacimientoNuevo)
-               + AvisoParecidas(nuevoNombreAtleta.Trim());
+                            + AvisoParecidas(nuevoNombreAtleta.Trim());
             bool datosCorrectos = await JS.InvokeAsync<bool>("confirm",
                 $"Vas a registrar un atleta NUEVO en '{categoriaActiva.Nombre}' del torneo '{TorneoActual.NombreTorneo}':\n\n{resumen}\n\n" +
                 "¿Los datos son correctos?\n(Si esta persona ya estaba registrada, cancela y usa \"Atleta ya registrado\" para no duplicarla.)");
@@ -1393,9 +1393,13 @@
 
     private async Task EliminarCompetidor(int competidorId, string nombre)
     {
-        if (categoriaActiva?.RegistroCerrado == true) {  mensajeError = "El registro de esta categoría está cerrado."; return; }
+        if (categoriaActiva?.RegistroCerrado == true) { mensajeError = "El registro de esta categoría está cerrado."; return; }
 
-        bool confirmado = await JS.InvokeAsync<bool>("confirm", $"¿Eliminar a {nombre} de esta categoria? Esta acción no se puede deshacer.");
+        bool confirmado = await JS.InvokeAsync<bool>("confirm",
+            $"¿Eliminar a {nombre} de esta categoría?\n\n" +
+            "Si no está registrado en ninguna otra categoría ni torneo (ni tiene ranking), también se eliminará del catálogo de atletas. " +
+            "Si sí lo está, solo se quita de esta categoría y sus demás datos se conservan.\n\n" +
+            "Esta acción no se puede deshacer.");
         if (!confirmado) return;
 
         mensajeError = ""; mensajeExito = "";
@@ -1406,6 +1410,12 @@
             (p.Estado == "Jugado" || p.Estado == "EnCancha"));
 
         if (activo) { mensajeError = "Este atleta ya tiene partidos jugados o en curso. No se puede eliminar."; return; }
+
+        // Atletas de este competidor (1 en singles, 2 en dobles), antes de quitar el enlace
+        var atletaIds = await db.CompetidorIntegrantes
+            .Where(ci => ci.CompetidorId == competidorId)
+            .Select(ci => ci.AtletaId)
+            .ToListAsync();
 
         try
         {
@@ -1424,9 +1434,79 @@
             return;
         }
 
-        mensajeExito = "Eliminado correctamente.";
+        // Borrar del catálogo a quien ya no está registrado en ningún otro lado
+        int eliminadosDelCatalogo = 0;
+        foreach (var atletaId in atletaIds)
+        {
+            bool sigueEnOtroLado =
+                await db.CompetidorIntegrantes.AnyAsync(ci => ci.AtletaId == atletaId) ||
+                await db.RankingHistorials.AnyAsync(r => r.AtletaId == atletaId) ||
+                await db.PuntosPartido.AnyAsync(pp => pp.SirveAtletaId == atletaId || pp.RecibeAtletaId == atletaId);
+
+            if (sigueEnOtroLado) continue;
+
+            try
+            {
+                var atleta = await db.Atletas.FindAsync(atletaId);
+                if (atleta != null)
+                {
+                    db.Atletas.Remove(atleta);
+                    await db.SaveChangesAsync();
+                    eliminadosDelCatalogo++;
+                }
+            }
+            catch (DbUpdateException)
+            {
+                db.ChangeTracker.Clear();   // si algo todavía la referencia, simplemente se conserva
+            }
+        }
+
+        mensajeExito = eliminadosDelCatalogo == 0
+            ? "Eliminado de esta categoría. Sus datos se conservan porque está registrado en otra categoría o torneo."
+            : eliminadosDelCatalogo == atletaIds.Count
+                ? "Eliminado por completo: no estaba registrado en ninguna otra categoría ni torneo."
+                : "Eliminados de esta categoría. Solo se borró del catálogo a quien no estaba en ningún otro lado; el otro integrante se conserva.";
+
+        // Refrescar la lista del selector "Atleta ya registrado" para que no aparezcan borrados
+        atletasDisponibles = await db.Atletas.Include(a => a.Municipio).OrderBy(a => a.Nombre).ToListAsync();
         await CargarCompetidores();
+        await CargarAtletasYaRegistrados();
         await CargarGrupos();
+    }
+
+    // Borra del catálogo a las atletas que ya no están registradas en ningún otro lado.
+    // Devuelve cuántas se eliminaron y cuántas se conservaron.
+    private static async Task<(int eliminados, int conservados)> LimpiarAtletasSueltasAsync(TorneoContext db, IEnumerable<int> atletaIds)
+    {
+        int eliminados = 0, conservados = 0;
+
+        foreach (var atletaId in atletaIds.Distinct())
+        {
+            bool sigueEnOtroLado =
+                await db.CompetidorIntegrantes.AnyAsync(ci => ci.AtletaId == atletaId) ||
+                await db.RankingHistorials.AnyAsync(r => r.AtletaId == atletaId) ||
+                await db.PuntosPartido.AnyAsync(pp => pp.SirveAtletaId == atletaId || pp.RecibeAtletaId == atletaId);
+
+            if (sigueEnOtroLado) { conservados++; continue; }
+
+            try
+            {
+                var atleta = await db.Atletas.FindAsync(atletaId);
+                if (atleta != null)
+                {
+                    db.Atletas.Remove(atleta);
+                    await db.SaveChangesAsync();
+                    eliminados++;
+                }
+            }
+            catch (DbUpdateException)
+            {
+                db.ChangeTracker.Clear();   // si algo todavía la referencia, se conserva
+                conservados++;
+            }
+        }
+
+        return (eliminados, conservados);
     }
 
     private async Task EliminarCategoriaActiva()
@@ -1436,16 +1516,31 @@
         mensajeError = ""; mensajeExito = "";
 
         bool confirmado = await JS.InvokeAsync<bool>("confirm",
-            $"¿Eliminar la categoría '{categoriaActiva!.Nombre} {categoriaActiva.Modalidad} {categoriaActiva.Rama}' por completo?");
+            $"¿Eliminar la categoría '{categoriaActiva!.Nombre} {categoriaActiva.Modalidad} {categoriaActiva.Rama}' por completo?\n\n" +
+            "Se borrarán sus partidos y sus inscripciones. Los atletas que no estén registrados en ninguna otra categoría ni torneo " +
+            "(ni tengan ranking) también se eliminarán del catálogo; los demás se conservan con todos sus datos.\n\n" +
+            "Esta acción no se puede deshacer.");
         if (!confirmado) return;
 
         using var db = await DbFactory.CreateDbContextAsync();
         using var transaccion = await db.Database.BeginTransactionAsync();
 
+        var atletaIds = new List<int>();
+
         try
         {
             var competidorIds = await db.Competidores.Where(c => c.CategoriaId == categoriaActiva.Id).Select(c => c.Id).ToListAsync();
+
+            atletaIds = await db.CompetidorIntegrantes
+                .Where(ci => competidorIds.Contains(ci.CompetidorId))
+                .Select(ci => ci.AtletaId)
+                .Distinct()
+                .ToListAsync();
+
             var partidoIds = await db.Partidos.Where(p => p.CategoriaId == categoriaActiva.Id).Select(p => p.Id).ToListAsync();
+
+            var puntosABorrar = await db.PuntosPartido.Where(pp => partidoIds.Contains(pp.PartidoId)).ToListAsync();
+            db.PuntosPartido.RemoveRange(puntosABorrar);
 
             var setsABorrar = await db.SetsPartidos.Where(s => partidoIds.Contains(s.PartidoId)).ToListAsync();
             db.SetsPartidos.RemoveRange(setsABorrar);
@@ -1483,10 +1578,17 @@
             return;
         }
 
+        var (atletasEliminadas, atletasConservadas) = await LimpiarAtletasSueltasAsync(db, atletaIds);
+
         categoriaSeleccionadaId = 0;
         categoriaActiva = null;
         competidoresActuales = null;
         categorias = await db.Categorias.Include(c => c.Configuracion).Where(c => c.TorneoId == TorneoActual.TorneoId).ToListAsync();
-        mensajeExito = "Categoría eliminada.";
+        mensajeExito = "Categoría eliminada."
+            + (atletasEliminadas > 0 ? $" {atletasEliminadas} atleta(s) que no estaban en ningún otro lado también se eliminaron del catálogo." : "")
+            + (atletasConservadas > 0 ? $" {atletasConservadas} se conservan por estar registrados en otra categoría o torneo." : "");
+
+        // Refrescar la lista de "Atleta ya registrado" para que no aparezcan las eliminadas
+        atletasDisponibles = await db.Atletas.Include(a => a.Municipio).OrderBy(a => a.Nombre).ToListAsync();
     }
 }

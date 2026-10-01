@@ -1470,7 +1470,11 @@ h1:focus {
         margin-top: 6px;
         width: 100%;
     }
-}}
+}
+
+.solo-impresion {
+    display: none;
+}
 
 /* =====================================================================
    IMPRESIÓN DEL BRACKET
@@ -1502,6 +1506,22 @@ h1:focus {
         box-shadow: none;
         border: none;
     }
+
+    .solo-impresion {
+        display: block !important;
+        margin-bottom: 12px;
+    }
+
+        .solo-impresion h1 {
+            font-size: 1.4rem;
+            margin: 0 0 2px 0;
+        }
+
+        .solo-impresion p {
+            margin: 0;
+            font-size: 1.05rem;
+            font-weight: 600;
+        }
 
     @page {
         size: landscape;
@@ -1805,4 +1825,85 @@ h1:focus {
         padding: 9px 12px;
         font-size: 0.9rem;
     }
+}
+
+/* ===== Página Grupos: matriz de resultados ===== */
+.grupo-matriz-wrap {
+    overflow-x: auto;
+}
+
+.grupo-matriz {
+    border-collapse: collapse;
+    width: 100%;
+}
+
+    .grupo-matriz th,
+    .grupo-matriz td {
+        border: 1px solid #8A9794;
+        padding: 6px 8px;
+        text-align: center;
+        vertical-align: middle;
+    }
+
+    .grupo-matriz thead th {
+        background: #E8EFEE;
+        font-weight: 600;
+        font-size: 0.85rem;
+        min-width: 96px;
+    }
+
+    .grupo-matriz .g-esquina {
+        background: #fff;
+        min-width: 120px;
+    }
+
+    .grupo-matriz .g-fila {
+        text-align: left;
+        background: #E8EFEE;
+        font-weight: 600;
+        font-size: 0.85rem;
+        min-width: 120px;
+        position: sticky;
+        left: 0;
+        z-index: 1;
+    }
+
+.g-eq {
+    display: block;
+    font-weight: 400;
+    font-size: 0.72rem;
+    color: #5B6B68;
+}
+
+.g-celda {
+    height: 56px;
+    min-width: 96px;
+}
+
+.g-diag {
+    background: repeating-linear-gradient(135deg, #CFCFCF, #CFCFCF 4px, #EDEDED 4px, #EDEDED 8px);
+}
+
+.g-gana {
+    background: #E3F3E6;
+}
+
+.g-pierde {
+    background: #FBE6E4;
+}
+
+.g-enjuego {
+    background: #FFF6D6;
+}
+
+.g-set {
+    font-weight: 600;
+    font-size: 0.95rem;
+    line-height: 1.35;
+}
+
+.g-nota {
+    font-size: 0.75rem;
+    color: #5B6B68;
+    font-style: italic;
 }
