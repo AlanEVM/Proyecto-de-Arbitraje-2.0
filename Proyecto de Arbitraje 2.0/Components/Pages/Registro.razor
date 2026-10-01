@@ -51,7 +51,14 @@
                         @if (categoriaActiva.RegistroCerrado)
                         {
                             <span class="badge badge-jugado">Registro cerrado</span>
-                            <button class="btn btn-ghost btn-mini" @onclick="ReabrirRegistro">Reabrir registro</button>
+                            @if (!categoriaTienePartidos)
+                            {
+                                <button class="btn btn-ghost btn-mini" @onclick="ReabrirRegistro">Reabrir registro</button>
+                            }
+                            else
+                            {
+                                <span class="nota">Ya se generaron partidos; el registro no se puede reabrir.</span>
+                            }
                         }
                         else
                         {
@@ -483,6 +490,16 @@
         }
     }
 
+    private bool categoriaTienePartidos;
+
+    private async Task CargarTienePartidos()
+    {
+        if (categoriaActiva == null) { categoriaTienePartidos = false; return; }
+
+        using var db = await DbFactory.CreateDbContextAsync();
+        categoriaTienePartidos = await db.Partidos.AnyAsync(p => p.CategoriaId == categoriaActiva.Id);
+    }
+
     private async Task OnCategoriaSeleccionada()
     {
         mensajeError = ""; mensajeExito = "";
@@ -496,7 +513,7 @@
         integrante1.FiltroAnio = null; integrante1.FiltroMunicipioId = 0;
         integrante2.FiltroAnio = null; integrante2.FiltroMunicipioId = 0;
 
-        if (categoriaSeleccionadaId == 0) { categoriaActiva = null; atletaIdsYaRegistradosEnCategoria.Clear(); return; }
+        if (categoriaSeleccionadaId == 0) { categoriaActiva = null; categoriaTienePartidos = false; atletaIdsYaRegistradosEnCategoria.Clear(); return; }
 
         categoriaActiva = categorias!.First(c => c.Id == categoriaSeleccionadaId);
 
@@ -510,6 +527,7 @@
         await CargarGrupos();
         await CargarCompetidores();
         await CargarAtletasYaRegistrados();
+        await CargarTienePartidos();
     }
 
     private async Task CargarAtletasYaRegistrados()
@@ -1373,7 +1391,7 @@
         if (categoriaActiva == null) return;
 
         bool confirmado = await JS.InvokeAsync<bool>("confirm",
-            "¿Cerrar el registro de esta categoría? Ya no se podrán agregar, quitar ni mover atletas (solo dar de baja si es necesario), y se generarán automaticamente los partidos que correspondan.");
+            "¿Cerrar el registro de esta categoría? Ya no se podrán agregar, quitar ni mover atletas (solo dar de baja si es necesario). Los partidos se generan después desde Calendario o Jornadas.");
         if (!confirmado) return;
 
         var (ok, msg) = await CalendarioSvc.CerrarRegistroAsync(categoriaActiva.Id);
@@ -1531,12 +1549,17 @@
 
     private async Task EliminarCategoriaActiva()
     {
-        if (categoriaActiva?.RegistroCerrado == true) {  mensajeError = "El registro de esta categoría está cerrado."; return; }
 
         mensajeError = ""; mensajeExito = "";
 
+        string advertencia = categoriaTienePartidos
+            ? "ATENCIÓN: esta categoría ya tiene partidos generados y se perderán junto con sus resultados.\n\n"
+            : "";
+
         bool confirmado = await JS.InvokeAsync<bool>("confirm",
+            advertencia +
             $"¿Eliminar la categoría '{categoriaActiva!.Nombre} {categoriaActiva.Modalidad} {categoriaActiva.Rama}' por completo?\n\n" +
+            // ...el resto del texto que ya tenías
             "Se borrarán sus partidos y sus inscripciones. Los atletas que no estén registrados en ninguna otra categoría ni torneo " +
             "(ni tengan ranking) también se eliminarán del catálogo; los demás se conservan con todos sus datos.\n\n" +
             "Esta acción no se puede deshacer.");

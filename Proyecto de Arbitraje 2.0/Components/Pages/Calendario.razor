@@ -60,7 +60,11 @@
                                 <span class="badge @claseFormato">@c.Formato</span>
                             </span>
 
-                            @if (c.Formato == "GruposFaseFinal")
+                            @if (!c.RegistroCerrado)
+                            {
+                                <span class="nota">Cierra el registro de la categoría para generar partidos.</span>
+                            }
+                            else if (c.Formato == "GruposFaseFinal")
                             {
                                 @if (categoriasConGruposGenerados.Contains(c.Id))
                                 {

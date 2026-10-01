@@ -81,6 +81,8 @@ public class CalendarioService
         if (categoria == null) return 0;
         if (categoria.Formato != "RoundRobin" && categoria.Formato != "Eliminatoria") return 0;
 
+        if (!categoria.RegistroCerrado) return 0;
+
         bool yaExisten = await db.Partidos.AnyAsync(p => p.CategoriaId == categoriaId);
         if (yaExisten) return 0;
 
@@ -129,6 +131,8 @@ public class CalendarioService
 
         var categoria = await db.Categorias.FindAsync(categoriaId);
         if (categoria == null || categoria.Formato != "GruposFaseFinal") return 0;
+
+        if (!categoria.RegistroCerrado) return 0;
 
         using var transaccion = await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
         int generados;
@@ -212,6 +216,9 @@ public class CalendarioService
         var categoria = await db.Categorias.FindAsync(categoriaId);
         if (categoria == null || categoria.Formato != "Jornadas")
             return (false, "Esta categoría no es de formato de Jornadas.", 0);
+
+        if (!categoria.RegistroCerrado)
+            return (false, "Cierra el registro de la categoría antes de generar jornadas.", 0);
 
         var config = await db.Configuracions.FirstOrDefaultAsync(c => c.CategoriaId == categoriaId);
         int vueltas = config?.NumeroVueltas ?? 1;
@@ -595,36 +602,12 @@ public class CalendarioService
         categoria.RegistroCerrado = true;
         await db.SaveChangesAsync();
 
-        string detalle;
-        switch (categoria.Formato)
+        string detalle = categoria.Formato switch
         {
-            case "GruposFaseFinal":
-                int nGrupos = await GenerarPartidosGrupoFaseAsync(categoriaId);
-                detalle = nGrupos > 0 ? $"Se generaron {nGrupos} partidos de grupos." : "No se generaron partidos (revisa que existan grupos con competidores).";
-                break;
-
-            case "Eliminatoria":
-                int activos = await db.Competidores.CountAsync(c => c.CategoriaId == categoriaId && c.Activo);
-                if (activos >= 2 && activos <= 7)
-                {
-                    int nRR = await GenerarRoundRobinAsync(categoriaId);
-                    detalle = nRR > 0 ? $"Se generaron {nRR} partidos (todos contra todos, por ser {activos} atletas)." : "No se pudieron generar los partidos.";
-                }
-                else
-                {
-                    detalle = "Registro cerrado. El bracket se sortea manualmente en Fase Final.";
-                }
-                break;
-
-            case "Jornadas":
-                var (ok, msg, _) = await GenerarSiguienteJornadaAsync(categoriaId);
-                detalle = ok ? $"Se generó la primera jornada. {msg}" : $"Registro cerrado, pero no se pudo generar la primera jornada: {msg}";
-                break;
-
-            default:
-                detalle = "Registro cerrado.";
-                break;
-        }
+            "Jornadas" => "Registro cerrado. Genera las jornadas desde la página Jornadas.",
+            "Eliminatoria" => "Registro cerrado. El bracket se sortea en Fase Final; con 7 atletas o menos, genera los partidos desde Calendario.",
+            _ => "Registro cerrado. Genera los partidos desde Calendario."
+        };
 
         _eventBus.Notificar();
         return (true, detalle);
@@ -635,6 +618,10 @@ public class CalendarioService
         using var db = await _factory.CreateDbContextAsync();
         var categoria = await db.Categorias.FindAsync(categoriaId);
         if (categoria == null) return (false, "Categoría no encontrada.");
+
+        bool hayPartidos = await db.Partidos.AnyAsync(p => p.CategoriaId == categoriaId);
+        if (hayPartidos)
+            return (false, "No se puede reabrir el registro: ya se generaron partidos en esta categoría.");
 
         categoria.RegistroCerrado = false;
         await db.SaveChangesAsync();

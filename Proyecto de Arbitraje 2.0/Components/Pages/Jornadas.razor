@@ -48,7 +48,11 @@ else
             @if (puedeCapturar)
             {
                 <div class="tarjeta">
-                    @if (totalJornadas == 0)
+                    @if (categorias.FirstOrDefault(c => c.Id == categoriaSeleccionadaId)?.RegistroCerrado != true)
+                    {
+                        <p class="nota">Cierra el registro de esta categoría en la página Registro para generar jornadas.</p>
+                    }
+                    else if (totalJornadas == 0)
                     {
                         <p class="nota">Esta categoría necesita al menos 2 atletas activos para generar jornadas.</p>
                     }

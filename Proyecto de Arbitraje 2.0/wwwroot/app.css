@@ -1913,8 +1913,9 @@ h1:focus {
 /* ===== Captura de sets: columnas alineadas ===== */
 .cap-grid {
     display: grid;
-    gap: 6px 10px;
+    gap: 6px 8px;
     align-items: center;
+    justify-content: center;
     max-width: 100%;
 }
 
@@ -1928,6 +1929,7 @@ h1:focus {
 .cap-nombre {
     font-weight: 600;
     overflow-wrap: anywhere;
+    text-align: right;
 }
 
 .cap-input {
