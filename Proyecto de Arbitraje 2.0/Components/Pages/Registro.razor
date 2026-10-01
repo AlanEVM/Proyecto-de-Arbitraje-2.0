@@ -140,19 +140,19 @@
                                 }
                             </select>
                         </div>
-                        <div class="campo" style="max-width:100px;">
+                        <div class="campo" style="min-width:170px; max-width:200px;">
                             <label>Género</label>
                             @if (categoriaActiva.Rama == "Mixto")
                             {
-                                <select @bind="generoSeleccionado">
+                                <select @bind="generoSeleccionado" style="width:100%;">
                                     <option value="">-- Selecciona --</option>
-                                    <option value="M">M</option>
-                                    <option value="F">F</option>
+                                    <option value="M">Masculino</option>
+                                    <option value="F">Femenino</option>
                                 </select>
                             }
                             else
                             {
-                                <input value="@generoSeleccionado" disabled style="text-align:center; background:#eee;" />
+                                <input value="@(categoriaActiva.Rama == "Varonil" ? "Masculino" : "Femenino")" disabled style="width:100%; text-align:center; background:#eee;" />
                             }
                         </div>
                         <div class="campo" style="max-width:110px;">
@@ -202,7 +202,7 @@
                                 <option value="0">-- Selecciona --</option>
                                 @foreach (var a in AtletasCompatibles())
                                 {
-                                    <option value="@a.Id">@a.Nombre (@a.Municipio.Nombre) @(a.AnioNacimiento != null ? $" - {a.AnioNacimiento}" : "") @(string.IsNullOrEmpty(a.Genero) ? "" : $"[{a.Genero}]")</option>
+                                    <option value="@a.Id">@a.Nombre (@a.Municipio.Nombre) @(a.AnioNacimiento != null ? $" - {a.AnioNacimiento}" : "") @(string.IsNullOrEmpty(a.Genero) ? "" : $"[{(a.Genero == "M" ? "Masculino" : "Femenino")}]")</option>
                                 }
                             </select>
                         </div>
@@ -812,7 +812,7 @@
         _ => generoElegido ?? ""
     };
 
-    private static string TextoGenero(string? g) => g == "M" ? "Hombre" : g == "F" ? "Mujer" : "(sin definir)";
+    private static string TextoGenero(string? g) => g == "M" ? "Masculino" : g == "F" ? "Femenino" : "(sin definir)";
 
     private string NombreMunicipio(int id) => municipios?.FirstOrDefault(m => m.Id == id)?.Nombre ?? "(sin definir)";
 
@@ -1112,8 +1112,8 @@
         if (atleta1!.Id == atleta2!.Id) { mensajeError = "Los dos integrantes no pueden ser la misma persona."; return; }
         if (atleta1.MunicipioId != atleta2.MunicipioId) { mensajeError = "Los dos integrantes deben ser del mismo municipio/equipo."; return; }
 
-        if (categoriaActiva!.Rama == "Varonil" && (atleta1.Genero != "M" || atleta2.Genero != "M")) { mensajeError = "Ambos deben ser 'M'."; return; }
-        if (categoriaActiva.Rama == "Femenil" && (atleta1.Genero != "F" || atleta2.Genero != "F")) { mensajeError = "Ambas deben ser 'F'."; return; }
+        if (categoriaActiva!.Rama == "Varonil" && (atleta1.Genero != "M" || atleta2.Genero != "M")) { mensajeError = "Ambos deben ser de género Masculino."; return; }
+        if (categoriaActiva.Rama == "Femenil" && (atleta1.Genero != "F" || atleta2.Genero != "F")) { mensajeError = "Ambas deben ser de género Femenino."; return; }
         if (categoriaActiva.Rama == "Mixto")
         {
             var generos = new[] { atleta1.Genero, atleta2.Genero };
@@ -1280,15 +1280,15 @@
                         <label>Género:</label><br />
                         @if (categoriaActiva!.Rama == "Mixto")
                         {
-                            <select @bind="integrante.NuevoGenero">
-                                <option value="">--</option>
-                                <option value="M">M</option>
-                                <option value="F">F</option>
+                            <select @bind="integrante.NuevoGenero" style="min-width:150px;">
+                                <option value="">-- Selecciona --</option>
+                                <option value="M">Masculino</option>
+                                <option value="F">Femenino</option>
                             </select>
                         }
                         else
                         {
-                            <input value="@(categoriaActiva.Rama == "Varonil" ? "M" : "F")" disabled style="width:50px; text-align:center; background:#eee;" />
+                            <input value="@(categoriaActiva.Rama == "Varonil" ? "Masculino" : "Femenino")" disabled style="width:120px; text-align:center; background:#eee;" />
                         }
                     </div>
                     <div>
@@ -1346,7 +1346,7 @@
                         <option value="0">-- Selecciona --</option>
                         @foreach (var a in listaFiltrada)
                         {
-                            <option value="@a.Id">@a.Nombre (@a.Municipio.Nombre) @(a.AnioNacimiento != null ? $" - {a.AnioNacimiento}" : "") @(string.IsNullOrEmpty(a.Genero) ? "" : $"[{a.Genero}]")</option>
+                            <option value="@a.Id">@a.Nombre (@a.Municipio.Nombre) @(a.AnioNacimiento != null ? $" - {a.AnioNacimiento}" : "") @(string.IsNullOrEmpty(a.Genero) ? "" : $"[{(a.Genero == "M" ? "Masculino" : "Femenino")}]")</option>
                         }
                     </select>
 

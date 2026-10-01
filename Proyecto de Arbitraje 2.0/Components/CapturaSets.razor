@@ -1,0 +1,103 @@
+﻿@* Captura de sets: nombres a la izquierda, un set por columna.
+   En "2 de 3 Sets" el Set 3 solo aparece cuando cada atleta ganó un set. *@
+
+<div class="cap-grid" style="grid-template-columns: minmax(110px, 1fr) repeat(@Columnas, 68px);">
+
+    <div></div>
+    <div class="cap-enc">Set 1</div>
+    @if (DosDeTres)
+    {
+        <div class="cap-enc">Set 2</div>
+    }
+    @if (MostrarSet3)
+    {
+        <div class="cap-enc">Set 3</div>
+    }
+
+    <div class="cap-nombre">@NombreA</div>
+    <input type="number" min="0" class="cap-input" value="@S1A" @onchange="e => Cambiar(1, true, e)" />
+    @if (DosDeTres)
+    {
+        <input type="number" min="0" class="cap-input" value="@S2A" @onchange="e => Cambiar(2, true, e)" />
+    }
+    @if (MostrarSet3)
+    {
+        <input type="number" min="0" class="cap-input" value="@S3A" @onchange="e => Cambiar(3, true, e)" />
+    }
+
+    <div class="cap-nombre">@NombreB</div>
+    <input type="number" min="0" class="cap-input" value="@S1B" @onchange="e => Cambiar(1, false, e)" />
+    @if (DosDeTres)
+    {
+        <input type="number" min="0" class="cap-input" value="@S2B" @onchange="e => Cambiar(2, false, e)" />
+    }
+    @if (MostrarSet3)
+    {
+        <input type="number" min="0" class="cap-input" value="@S3B" @onchange="e => Cambiar(3, false, e)" />
+    }
+</div>
+
+@if (DosDeTres && !MostrarSet3)
+{
+    <p class="nota" style="margin:6px 0 0;">El Set 3 aparece solo si cada atleta gana un set.</p>
+}
+
+@code {
+    [Parameter] public string NombreA { get; set; } = "";
+    [Parameter] public string NombreB { get; set; } = "";
+    [Parameter] public string ModalidadSets { get; set; } = "2 de 3 Sets";
+
+    [Parameter] public int S1A { get; set; }
+    [Parameter] public EventCallback<int> S1AChanged { get; set; }
+    [Parameter] public int S1B { get; set; }
+    [Parameter] public EventCallback<int> S1BChanged { get; set; }
+
+    [Parameter] public int S2A { get; set; }
+    [Parameter] public EventCallback<int> S2AChanged { get; set; }
+    [Parameter] public int S2B { get; set; }
+    [Parameter] public EventCallback<int> S2BChanged { get; set; }
+
+    [Parameter] public int S3A { get; set; }
+    [Parameter] public EventCallback<int> S3AChanged { get; set; }
+    [Parameter] public int S3B { get; set; }
+    [Parameter] public EventCallback<int> S3BChanged { get; set; }
+
+    private bool DosDeTres => ModalidadSets == "2 de 3 Sets";
+
+    // Los dos primeros sets ya tienen ganador y cada atleta ganó uno (1-1)
+    private bool Dividido =>
+        S1A != S1B && S2A != S2B && ((S1A > S1B) != (S2A > S2B));
+
+    private bool MostrarSet3 => DosDeTres && Dividido;
+
+    private int Columnas => !DosDeTres ? 1 : (MostrarSet3 ? 3 : 2);
+
+    private async Task Cambiar(int set, bool esA, ChangeEventArgs e)
+    {
+        int valor = int.TryParse(e.Value?.ToString(), out var n) && n > 0 ? n : 0;
+
+        switch (set)
+        {
+            case 1:
+                if (esA) { S1A = valor; await S1AChanged.InvokeAsync(valor); }
+                else { S1B = valor; await S1BChanged.InvokeAsync(valor); }
+                break;
+            case 2:
+                if (esA) { S2A = valor; await S2AChanged.InvokeAsync(valor); }
+                else { S2B = valor; await S2BChanged.InvokeAsync(valor); }
+                break;
+            case 3:
+                if (esA) { S3A = valor; await S3AChanged.InvokeAsync(valor); }
+                else { S3B = valor; await S3BChanged.InvokeAsync(valor); }
+                break;
+        }
+
+        // Si el Set 3 ya no hace falta, se limpia para que no se guarde un valor oculto
+        if (DosDeTres && !Dividido && (S3A != 0 || S3B != 0))
+        {
+            S3A = 0; S3B = 0;
+            await S3AChanged.InvokeAsync(0);
+            await S3BChanged.InvokeAsync(0);
+        }
+    }
+}

@@ -311,26 +311,9 @@
                                                         </div>
                                                     }
 
-                                                    <div class="captura-sets">
-                                                        <div class="captura-set">
-                                                            <label>Set 1</label>
-                                                            @nombreA: <input type="number" min="0" class="input-mini" @bind="s1a" /><br />
-                                                            @nombreB: <input type="number" min="0" class="input-mini" @bind="s1b" />
-                                                        </div>
-                                                        @if (modalidadSets == "2 de 3 Sets")
-                                                        {
-                                                            <div class="captura-set">
-                                                                <label>Set 2</label>
-                                                                @nombreA: <input type="number" min="0" class="input-mini" @bind="s2a" /><br />
-                                                                @nombreB: <input type="number" min="0" class="input-mini" @bind="s2b" />
-                                                            </div>
-                                                            <div class="captura-set">
-                                                                <label>Set 3</label>
-                                                                @nombreA: <input type="number" min="0" class="input-mini" @bind="s3a" /><br />
-                                                                @nombreB: <input type="number" min="0" class="input-mini" @bind="s3b" />
-                                                            </div>
-                                                        }
-                                                    </div>
+                                                    <CapturaSets NombreA="@nombreA" NombreB="@nombreB" ModalidadSets="@modalidadSets"
+                                                                 @bind-S1A="s1a" @bind-S1B="s1b" @bind-S2A="s2a" @bind-S2B="s2b" @bind-S3A="s3a" @bind-S3B="s3b" />
+
                                                     <div style="margin-top:8px;">
                                                         <button class="btn btn-primary btn-mini" @onclick="GuardarResultado">Guardar</button>
                                                         <button class="btn btn-ghost btn-mini" @onclick="() => partidoCapturandoId = null">Cancelar</button>

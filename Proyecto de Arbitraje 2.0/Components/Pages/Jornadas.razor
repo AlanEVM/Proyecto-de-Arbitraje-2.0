@@ -131,26 +131,8 @@ else
                             @if (!jugado && capturandoPartidoId == item.Partido.Id)
                             {
                                 <div class="jf-captura" style="padding: 8px 0 14px; border-bottom: 1px solid var(--gris-borde);">
-                                    <div class="captura-sets">
-                                        <div class="captura-set">
-                                            <label>Set 1</label>
-                                            @item.NombreA: <input type="number" min="0" class="input-mini" @bind="s1a" /><br />
-                                            @item.NombreB: <input type="number" min="0" class="input-mini" @bind="s1b" />
-                                        </div>
-                                        @if (modalidadSetsCap == "2 de 3 Sets")
-                                        {
-                                            <div class="captura-set">
-                                                <label>Set 2</label>
-                                                @item.NombreA: <input type="number" min="0" class="input-mini" @bind="s2a" /><br />
-                                                @item.NombreB: <input type="number" min="0" class="input-mini" @bind="s2b" />
-                                            </div>
-                                            <div class="captura-set">
-                                                <label>Set 3</label>
-                                                @item.NombreA: <input type="number" min="0" class="input-mini" @bind="s3a" /><br />
-                                                @item.NombreB: <input type="number" min="0" class="input-mini" @bind="s3b" />
-                                            </div>
-                                        }
-                                    </div>
+                                    <CapturaSets NombreA="@item.NombreA" NombreB="@item.NombreB" ModalidadSets="@modalidadSetsCap"
+                                                 @bind-S1A="s1a" @bind-S1B="s1b" @bind-S2A="s2a" @bind-S2B="s2b" @bind-S3A="s3a" @bind-S3B="s3b" />
                                     <div style="margin-top: 10px;">
                                         <button class="btn btn-primary" @onclick="GuardarResultado">Guardar Resultado</button>
                                         <button class="btn btn-ghost" @onclick="CancelarCaptura">Cancelar</button>
@@ -187,26 +169,8 @@ else
 
                         @if (corrigiendoPartidoId == item.Partido.Id)
                         {
-                            <div class="captura-sets">
-                                <div class="captura-set">
-                                    <label>Set 1</label>
-                                    @item.NombreA: <input type="number" min="0" class="input-mini" @bind="s1aC" /><br />
-                                    @item.NombreB: <input type="number" min="0" class="input-mini" @bind="s1bC" />
-                                </div>
-                                @if (modalidadSetsCorr == "2 de 3 Sets")
-                                {
-                                    <div class="captura-set">
-                                        <label>Set 2</label>
-                                        @item.NombreA: <input type="number" min="0" class="input-mini" @bind="s2aC" /><br />
-                                        @item.NombreB: <input type="number" min="0" class="input-mini" @bind="s2bC" />
-                                    </div>
-                                    <div class="captura-set">
-                                        <label>Set 3</label>
-                                        @item.NombreA: <input type="number" min="0" class="input-mini" @bind="s3aC" /><br />
-                                        @item.NombreB: <input type="number" min="0" class="input-mini" @bind="s3bC" />
-                                    </div>
-                                }
-                            </div>
+                            <CapturaSets NombreA="@item.NombreA" NombreB="@item.NombreB" ModalidadSets="@modalidadSetsCorr"
+                                         @bind-S1A="s1aC" @bind-S1B="s1bC" @bind-S2A="s2aC" @bind-S2B="s2bC" @bind-S3A="s3aC" @bind-S3B="s3bC" />
                             <div style="margin-top: 10px;">
                                 <button class="btn btn-primary" @onclick="() => GuardarCorreccion(item.Partido.Id)">Guardar Corrección</button>
                                 <button class="btn btn-ghost" @onclick="CancelarCorreccion">Cancelar</button>

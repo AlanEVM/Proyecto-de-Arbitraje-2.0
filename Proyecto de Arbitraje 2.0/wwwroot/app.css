@@ -1735,6 +1735,8 @@ h1:focus {
 .jf-ganador {
     font-weight: 700;
     color: var(--cancha);
+    border-bottom: 3px solid var(--cork);
+    padding-bottom: 2px;
 }
 
 .jf-sets {
@@ -1906,4 +1908,32 @@ h1:focus {
     font-size: 0.75rem;
     color: #5B6B68;
     font-style: italic;
+}
+
+/* ===== Captura de sets: columnas alineadas ===== */
+.cap-grid {
+    display: grid;
+    gap: 6px 10px;
+    align-items: center;
+    max-width: 100%;
+}
+
+.cap-enc {
+    text-align: center;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #5B6B68;
+}
+
+.cap-nombre {
+    font-weight: 600;
+    overflow-wrap: anywhere;
+}
+
+.cap-input {
+    width: 68px;
+    padding: 8px 4px;
+    font-size: 1rem;
+    text-align: center;
+    box-sizing: border-box;
 }
