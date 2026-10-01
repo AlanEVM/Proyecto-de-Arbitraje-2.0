@@ -25,12 +25,6 @@
 <div class="pagina">
     <div class="tarjeta-marcador pagina-header">
         <h1>Posiciones - @TorneoActual.NombreTorneo</h1>
-        @if (categoriaActiva != null)
-        {
-            <p class="pagina-subtitulo" style="font-size:1.1rem; font-weight:600; margin-top:6px;">
-                @categoriaActiva.Nombre · @categoriaActiva.Modalidad · @categoriaActiva.Rama
-            </p>
-        }
     </div>
 
     <div class="tarjeta">
@@ -60,7 +54,6 @@
     {
         <div class="solo-impresion">
             <h1>Posiciones - @TorneoActual.NombreTorneo</h1>
-            <p>@categoriaActiva.Nombre · @categoriaActiva.Modalidad · @categoriaActiva.Rama</p>
         </div>
 
         @if (categoriaActiva.Formato == "GruposFaseFinal")
@@ -68,7 +61,7 @@
             @if (podioGeneral != null && podioGeneral.Any())
             {
                 <div class="tarjeta">
-                    <h2>Podio (Fase Final)</h2>
+                    <h2>Podio (Fase Final) · @TituloCategoria</h2>
                     @foreach (var (puesto, entrada) in podioGeneral)
                     {
                         <div class="resultado-fila">
@@ -81,7 +74,7 @@
                 </div>
             }
 
-            <h2>Posiciones de grupos</h2>
+            <h2>Posiciones de grupos · @TituloCategoria</h2>
             @if (!tablasPorGrupo.Any())
             {
                 <p class="vacio">Esta categoría todavía no tiene grupos con atletas.</p>
@@ -118,7 +111,7 @@
         {
             @if (podioBandas.Any())
             {
-                <h2>Podio por banda</h2>
+                <h2>Podio por banda · @TituloCategoria</h2>
                 <div class="posiciones-grid">
                     @foreach (var banda in podioBandas)
                     {
@@ -155,7 +148,7 @@
             }
 
             <div class="tarjeta">
-                <h2>Posiciones de jornadas</h2>
+                <h2>Posiciones de jornadas · @TituloCategoria</h2>
                 @if (!tablaJornadas.Any())
                 {
                     <p class="vacio">Sin atletas registrados.</p>
@@ -181,7 +174,7 @@
             @if (podioGeneral != null && podioGeneral.Any())
             {
                 <div class="tarjeta">
-                    <h2>Podio</h2>
+                    <h2>Podio · @TituloCategoria</h2>
                     @foreach (var (puesto, entrada) in podioGeneral)
                     {
                         <div class="resultado-fila">
@@ -195,7 +188,7 @@
             }
 
             <div class="tarjeta">
-                <h2>Posiciones (todos contra todos)</h2>
+                <h2>Posiciones (todos contra todos) · @TituloCategoria</h2>
                 @if (!tablaRoundRobin.Any())
                 {
                     <p class="vacio">Sin atletas registrados.</p>
@@ -226,7 +219,7 @@
             @if (podioEliminatoria != null && podioEliminatoria.Any())
             {
                 <div class="tarjeta">
-                    <h2>Podio</h2>
+                    <h2>Podio · @TituloCategoria</h2>
                     @foreach (var (puesto, entrada) in podioEliminatoria)
                     {
                         <div class="resultado-fila">
@@ -246,7 +239,7 @@
             }
 
             <div class="tarjeta">
-                <h2>Resto de posiciones</h2>
+                <h2>Resto de posiciones · @TituloCategoria</h2>
                 @if (!tablaGeneralEliminatoria.Any())
                 {
                     <p class="vacio">No hay más atletas por acomodar.</p>
@@ -537,6 +530,10 @@
 
         return resultado;
     }
+
+    private string TituloCategoria => categoriaActiva == null
+    ? ""
+    : $"{categoriaActiva.Nombre} · {categoriaActiva.Modalidad} · {categoriaActiva.Rama}";
 
     private async Task CargarPosiciones()
     {
