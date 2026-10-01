@@ -301,28 +301,71 @@ public class CalendarioService
             .GroupBy(p => (p.CategoriaId, p.GrupoId, p.Jornada))
             .ToDictionary(g => g.Key, g => g.OrderBy(p => p.OrdenCola).ToList());
 
-        var clavesGrupos = colas.Keys.ToList();
-        var ordenados = new List<Partido>();
-        bool huboAvance = true;
+        // Atletas que están jugando ahora mismo
+        var enCanchaLista = partidos.Where(p => p.Estado == "EnCancha").ToList();
+        var atletasEnCancha = enCanchaLista
+            .SelectMany(p => p.CompetidorA.CompetidorIntegrantes.Concat(p.CompetidorB.CompetidorIntegrantes))
+            .Select(ci => ci.AtletaId)
+            .ToHashSet();
 
-        while (huboAvance)
+        bool Ocupado(Partido p) =>
+            p.CompetidorA.CompetidorIntegrantes.Any(ci => atletasEnCancha.Contains(ci.AtletaId)) ||
+            p.CompetidorB.CompetidorIntegrantes.Any(ci => atletasEnCancha.Contains(ci.AtletaId));
+
+        int Jugados(Partido p) =>
+            Math.Max(p.CompetidorA.Pg + p.CompetidorA.Pp, p.CompetidorB.Pg + p.CompetidorB.Pp);
+
+        // Partidos ya jugados o pospuestos de cada grupo (no vienen en la lista de pendientes)
+        var conteos = await db.Partidos
+            .Where(p => categoriaIds.Contains(p.CategoriaId)
+                     && (p.Fase == "Grupos" || p.Fase == "Liga")
+                     && (p.Estado == "Jugado" || p.Estado == "Pospuesto"))
+            .GroupBy(p => new { p.CategoriaId, p.GrupoId, p.Jornada, p.Estado })
+            .Select(g => new { g.Key.CategoriaId, g.Key.GrupoId, g.Key.Jornada, g.Key.Estado, Cantidad = g.Count() })
+            .ToListAsync();
+
+        // hechos = jugados + en cancha; total = todo lo que le toca al grupo
+        var hechos = new Dictionary<(int, int?, int?), int>();
+        var total = new Dictionary<(int, int?, int?), int>();
+
+        foreach (var key in colas.Keys)
         {
-            huboAvance = false;
-            foreach (var key in clavesGrupos)
-            {
-                var cola = colas[key];
-                if (!cola.Any()) continue;
+            int jugados = conteos.Where(c => c.Estado == "Jugado" && (c.CategoriaId, c.GrupoId, c.Jornada) == key).Sum(c => c.Cantidad);
+            int pospuestos = conteos.Where(c => c.Estado == "Pospuesto" && (c.CategoriaId, c.GrupoId, c.Jornada) == key).Sum(c => c.Cantidad);
+            int enCanchaGrupo = enCanchaLista.Count(p => (p.CategoriaId, p.GrupoId, p.Jornada) == key);
 
-                var elegido = cola
-                    .OrderBy(p => Math.Max(p.CompetidorA.Pg + p.CompetidorA.Pp, p.CompetidorB.Pg + p.CompetidorB.Pp))
-                    .ThenBy(p => p.OrdenCola)
-                    .First();
-
-                cola.Remove(elegido);
-                ordenados.Add(elegido);
-                huboAvance = true;
-            }
+            hechos[key] = jugados + enCanchaGrupo;
+            total[key] = jugados + enCanchaGrupo + pospuestos + colas[key].Count;
         }
+
+        var libres = colas.ToDictionary(k => k.Key, k => k.Value.Where(p => !Ocupado(p)).ToList());
+        var ocupados = colas.SelectMany(k => k.Value).Where(Ocupado).ToList();
+
+        var ordenados = new List<Partido>();
+
+        // Siempre toca el grupo con menor avance que todavía tenga un partido libre
+        while (libres.Any(k => k.Value.Count > 0))
+        {
+            var claveElegida = libres
+                .Where(k => k.Value.Count > 0)
+                .OrderBy(k => (double)hechos[k.Key] / total[k.Key])
+                .First().Key;
+
+            var elegido = libres[claveElegida]
+                .OrderBy(Jugados)
+                .ThenBy(p => p.OrdenCola)
+                .First();
+
+            libres[claveElegida].Remove(elegido);
+            ordenados.Add(elegido);
+            hechos[claveElegida]++;
+        }
+
+        // Los partidos con un atleta jugando ahora mismo van al final
+        ordenados.AddRange(ocupados
+            .OrderBy(p => (double)hechos[(p.CategoriaId, p.GrupoId, p.Jornada)] / total[(p.CategoriaId, p.GrupoId, p.Jornada)])
+            .ThenBy(Jugados)
+            .ThenBy(p => p.OrdenCola));
 
         var enCancha = partidos.Where(p => p.Estado == "EnCancha").OrderBy(p => p.CanchaId).ToList();
         var listaFinal = enCancha.Concat(ordenados).ToList();

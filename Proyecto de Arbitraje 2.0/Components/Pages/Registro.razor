@@ -924,6 +924,12 @@
 
         mensajeError = ""; mensajeExito = "";
 
+        if (categoriaActiva!.Formato == "GruposFaseFinal" && !grupos.Any())
+        {
+            mensajeError = "Esta categoría todavía no tiene grupos. Crea al menos un grupo antes de registrar atletas.";
+            return;
+        }
+
         using var db = await DbFactory.CreateDbContextAsync();
         Atleta atleta;
 
@@ -1055,7 +1061,11 @@
         db.Competidores.Add(competidor);
 
         try { await db.SaveChangesAsync(); }
-        catch (DbUpdateException) { mensajeError = "Este atleta ya está registrado en esta misma categoría."; return; }
+        catch (DbUpdateException ex)
+        {
+            mensajeError = ex.InnerException?.Message ?? "No se pudo registrar al atleta.";
+            return;
+        }
 
         nuevoNombreAtleta = "";
         anioNacimientoNuevo = null;
@@ -1073,6 +1083,12 @@
         if (categoriaActiva?.RegistroCerrado == true) {  mensajeError = "El registro de esta categoría está cerrado."; return; }
 
         mensajeError = ""; mensajeExito = "";
+
+        if (categoriaActiva!.Formato == "GruposFaseFinal" && !grupos.Any())
+        {
+            mensajeError = "Esta categoría todavía no tiene grupos. Crea al menos un grupo antes de registrar atletas.";
+            return;
+        }
 
         using var db = await DbFactory.CreateDbContextAsync();
 
@@ -1120,7 +1136,11 @@
         db.Competidores.Add(competidor);
 
         try { await db.SaveChangesAsync(); }
-        catch (DbUpdateException) { mensajeError = "Uno de los dos atletas ya está registrado en esta misma categoría."; return; }
+        catch (DbUpdateException ex)
+        {
+            mensajeError = ex.InnerException?.Message ?? "No se pudo registrar la pareja.";
+            return;
+        }
 
         integrante1 = new() { EsNuevo = integrante1.EsNuevo, FiltroAnio = integrante1.FiltroAnio, FiltroMunicipioId = integrante1.FiltroMunicipioId };
         integrante2 = new() { EsNuevo = integrante2.EsNuevo, FiltroAnio = integrante2.FiltroAnio, FiltroMunicipioId = integrante2.FiltroMunicipioId };
