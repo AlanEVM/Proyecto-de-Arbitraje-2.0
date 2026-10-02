@@ -1095,7 +1095,7 @@ public class CalendarioService
     // PUNTO POR PUNTO (solo Árbitro)
     // =================================================================
 
-    private static (int sirveId, int recibeId) CalcularServicioTrasPuntos(
+    public static (int sirveId, int recibeId) CalcularServicioTrasPuntos(
         List<int> integrantesA, List<int> integrantesB,
         int primerSirveAtletaId, int primerRecibeAtletaId,
         IEnumerable<string> secuenciaGanadores)

@@ -283,6 +283,10 @@ public class ExportService
         }
     }
 
+    // ===== Hoja de puntuación (formato de papel, horizontal) =====
+
+    private const int ColumnasPunto = 30;   // cuadros de punto por renglón
+
     public async Task<byte[]?> GenerarPdfHojasPuntuacionAsync(int torneoId)
     {
         using var db = await _factory.CreateDbContextAsync();
@@ -292,10 +296,10 @@ public class ExportService
         var partidos = await db.Partidos
             .Where(p => categoriaIds.Contains(p.CategoriaId) && p.PuntosPartido.Any())
             .Include(p => p.Categoria)
+            .Include(p => p.SetsPartidos)
             .Include(p => p.CompetidorA).ThenInclude(c => c.CompetidorIntegrantes).ThenInclude(ci => ci.Atleta)
             .Include(p => p.CompetidorB).ThenInclude(c => c.CompetidorIntegrantes).ThenInclude(ci => ci.Atleta)
-            .Include(p => p.PuntosPartido).ThenInclude(pp => pp.SirveAtleta)
-            .Include(p => p.PuntosPartido).ThenInclude(pp => pp.RecibeAtleta)
+            .Include(p => p.PuntosPartido)
             .OrderBy(p => p.Categoria.Nombre)
             .ThenBy(p => p.Id)
             .ToListAsync();
@@ -306,62 +310,78 @@ public class ExportService
         {
             foreach (var partido in partidos)
             {
-                string nombreA = string.Join(" / ", partido.CompetidorA.CompetidorIntegrantes.Select(ci => ci.Atleta.Nombre));
-                string nombreB = string.Join(" / ", partido.CompetidorB.CompetidorIntegrantes.Select(ci => ci.Atleta.Nombre));
+                var integrantesA = partido.CompetidorA.CompetidorIntegrantes.ToList();
+                var integrantesB = partido.CompetidorB.CompetidorIntegrantes.ToList();
+                var nombresA = integrantesA.Select(ci => ci.Atleta.Nombre).ToList();
+                var nombresB = integrantesB.Select(ci => ci.Atleta.Nombre).ToList();
+                var idsA = integrantesA.Select(ci => ci.AtletaId).ToList();
+                var idsB = integrantesB.Select(ci => ci.AtletaId).ToList();
+                bool dobles = idsA.Count == 2 && idsB.Count == 2;
+
                 var puntosPorSet = partido.PuntosPartido
                     .OrderBy(pp => pp.NumeroSet).ThenBy(pp => pp.NumeroPunto)
-                    .GroupBy(pp => pp.NumeroSet);
+                    .GroupBy(pp => pp.NumeroSet)
+                    .ToList();
+
+                // Marcador de cada set para el cuadro del centro
+                var marcadores = new Dictionary<int, (int a, int b)>();
+                foreach (var g in puntosPorSet)
+                {
+                    var ultimo = g.Last();
+                    marcadores[g.Key] = (ultimo.PuntosA, ultimo.PuntosB);
+                }
+                foreach (var s in partido.SetsPartidos)
+                    marcadores[s.NumeroSet] = (s.PuntosA, s.PuntosB);
+
+                int setsGanadosA = partido.SetsPartidos.Count(s => s.PuntosA > s.PuntosB);
+                int setsGanadosB = partido.SetsPartidos.Count(s => s.PuntosB > s.PuntosA);
 
                 contenedor.Page(pagina =>
                 {
-                    pagina.Size(PageSizes.Letter);
-                    pagina.Margin(30);
-                    pagina.DefaultTextStyle(x => x.FontSize(10));
+                    pagina.Size(PageSizes.Letter.Landscape());
+                    pagina.Margin(28);
+                    pagina.DefaultTextStyle(x => x.FontSize(9));
 
                     pagina.Header().Column(col =>
                     {
-                        col.Item().Text("Hoja de puntuación de bádminton").FontSize(16).Bold();
+                        col.Item().Text("Hoja de puntuación de bádminton").FontSize(15).Bold();
                         col.Item().Text($"{partido.Categoria.Nombre} · {partido.Categoria.Modalidad} · {partido.Categoria.Rama} - Fase: {partido.Fase}");
-                        col.Item().Text($"{nombreA} vs {nombreB}");
                         col.Item().Text($"Capturado por: {partido.CapturadoPor ?? "-"}   Fecha: {partido.FechaCaptura?.ToString("dd/MM/yyyy HH:mm") ?? "-"}");
-                        col.Item().PaddingTop(8).LineHorizontal(1);
+
+                        col.Item().PaddingTop(8).Row(fila =>
+                        {
+                            fila.RelativeItem(5).Row(r =>
+                            {
+                                r.ConstantItem(34).AlignTop().AlignLeft().Element(x => CuadroSets(x, setsGanadosA));
+                                r.RelativeItem().Element(x => CajaNombres(x, nombresA));
+                            });
+
+                            fila.ConstantItem(170).PaddingHorizontal(12).Element(x => TablaMarcadores(x, marcadores));
+
+                            fila.RelativeItem(5).Row(r =>
+                            {
+                                r.RelativeItem().Element(x => CajaNombres(x, nombresB));
+                                r.ConstantItem(34).AlignTop().AlignRight().Element(x => CuadroSets(x, setsGanadosB));
+                            });
+                        });
                     });
 
-                    pagina.Content().PaddingTop(10).Column(col =>
+                    pagina.Content().PaddingTop(6).Column(col =>
                     {
                         foreach (var grupoSet in puntosPorSet)
                         {
-                            col.Item().PaddingTop(8).Text($"Set {grupoSet.Key}").FontSize(13).Bold();
+                            var puntos = grupoSet.ToList();
+                            int finalA = puntos[^1].PuntosA;
+                            int finalB = puntos[^1].PuntosB;
 
-                            col.Item().Table(tabla =>
+                            col.Item().PaddingTop(8).ShowEntire().Column(setCol =>
                             {
-                                tabla.ColumnsDefinition(c =>
-                                {
-                                    c.ConstantColumn(40);
-                                    c.RelativeColumn(2);
-                                    c.RelativeColumn(1);
-                                    c.RelativeColumn(2);
-                                    c.RelativeColumn(2);
-                                });
+                                setCol.Item().Text($"Set {grupoSet.Key}").FontSize(11).Bold();
 
-                                tabla.Header(h =>
-                                {
-                                    h.Cell().Text("Punto").Bold();
-                                    h.Cell().Text("Puntuó").Bold();
-                                    h.Cell().Text("Marcador").Bold();
-                                    h.Cell().Text("Saca").Bold();
-                                    h.Cell().Text("Recibe").Bold();
-                                });
-
-                                foreach (var pp in grupoSet)
-                                {
-                                    string nombreAnoto = pp.EquipoAnoto == "A" ? nombreA : nombreB;
-                                    tabla.Cell().Text(pp.NumeroPunto.ToString());
-                                    tabla.Cell().Text(nombreAnoto);
-                                    tabla.Cell().Text($"{pp.PuntosA}-{pp.PuntosB}");
-                                    tabla.Cell().Text(pp.NumeroPunto == 1 ? pp.SirveAtleta.Nombre : "");
-                                    tabla.Cell().Text(pp.NumeroPunto == 1 ? pp.RecibeAtleta.Nombre : "");
-                                }
+                                if (dobles)
+                                    DibujarSetDobles(setCol, nombresA.Concat(nombresB).ToList(), idsA, idsB, puntos, finalA, finalB);
+                                else
+                                    DibujarSetSingles(setCol, nombresA[0], nombresB[0], idsA.Contains(puntos[0].SirveAtletaId), puntos, finalA, finalB);
                             });
                         }
                     });
@@ -377,6 +397,188 @@ public class ExportService
         });
 
         return documento.GeneratePdf();
+    }
+
+    private static IContainer Celda(IContainer c) =>
+        c.Border(0.5f).BorderColor(Colors.Grey.Darken2).MinHeight(17).AlignCenter().AlignMiddle();
+
+    private static IContainer CeldaNombre(IContainer c) =>
+        c.Border(0.5f).BorderColor(Colors.Grey.Darken2).MinHeight(17).PaddingLeft(3).AlignLeft().AlignMiddle();
+
+    private static void CuadroSets(IContainer c, int sets) =>
+        c.Width(28).Height(28).Border(1).AlignCenter().AlignMiddle().Text(sets.ToString()).FontSize(14).Bold();
+
+    private static void CajaNombres(IContainer c, List<string> nombres)
+    {
+        c.Border(1).Column(col =>
+        {
+            if (nombres.Count < 2)
+            {
+                col.Item().Height(44).AlignMiddle().PaddingLeft(6).Text(nombres.FirstOrDefault() ?? "").Bold().FontSize(11);
+            }
+            else
+            {
+                col.Item().Height(22).AlignMiddle().PaddingLeft(6).Text(nombres[0]).Bold().FontSize(10);
+                col.Item().BorderTop(0.5f).Height(22).AlignMiddle().PaddingLeft(6).Text(nombres[1]).Bold().FontSize(10);
+            }
+        });
+    }
+
+    private static void TablaMarcadores(IContainer c, Dictionary<int, (int a, int b)> marcadores)
+    {
+        c.Border(1).Column(col =>
+        {
+            for (int s = 1; s <= 3; s++)
+            {
+                bool hay = marcadores.TryGetValue(s, out var m);
+                string etiqueta = s.ToString();
+                string puntosA = hay ? m.a.ToString() : "";
+                string puntosB = hay ? m.b.ToString() : "";
+                float bordeArriba = s == 1 ? 0f : 0.5f;
+
+                col.Item().BorderTop(bordeArriba).Height(18).Row(r =>
+                {
+                    r.ConstantItem(22).BorderRight(0.5f).AlignCenter().AlignMiddle().Text(etiqueta).Bold();
+                    r.RelativeItem().AlignCenter().AlignMiddle().Text(puntosA).Bold().FontSize(11);
+                    r.ConstantItem(10).AlignCenter().AlignMiddle().Text(":");
+                    r.RelativeItem().AlignCenter().AlignMiddle().Text(puntosB).Bold().FontSize(11);
+                });
+            }
+        });
+    }
+
+    private static void DefinirColumnasHoja(TableColumnsDefinitionDescriptor c)
+    {
+        c.ConstantColumn(120);   // nombre
+        c.ConstantColumn(20);    // S / R
+        c.ConstantColumn(18);    // 0 inicial
+        for (int i = 0; i < ColumnasPunto; i++) c.ConstantColumn(17);   // cuadros de punto
+        c.ConstantColumn(40);    // marcador final
+    }
+
+    // Singles: 2 renglones por jugador; si se acaba el espacio, sigue en el renglón de abajo
+    private static void DibujarSetSingles(ColumnDescriptor col, string nombreA, string nombreB, bool sirveEsA,
+        List<Models.PuntoPartido> puntos, int finalA, int finalB)
+    {
+        int n = puntos.Count;
+        int lineas = Math.Max(2, (int)Math.Ceiling(n / (double)ColumnasPunto));
+        uint colFinal = (uint)(4 + ColumnasPunto);
+
+        col.Item().Table(t =>
+        {
+            t.ColumnsDefinition(DefinirColumnasHoja);
+
+            for (int jugador = 0; jugador < 2; jugador++)
+            {
+                bool esA = jugador == 0;
+                string nombre = esA ? nombreA : nombreB;
+                string letra = esA == sirveEsA ? "S" : "R";
+                int puntosFinal = esA ? finalA : finalB;
+                uint filaBase = (uint)(jugador * lineas + 1);
+
+                CeldaNombre(t.Cell().Row(filaBase).Column(1).RowSpan((uint)lineas)).Text(nombre).Bold().FontSize(9);
+                Celda(t.Cell().Row(filaBase).Column(colFinal).RowSpan((uint)lineas)).Text(puntosFinal.ToString()).Bold().FontSize(11);
+
+                for (int linea = 0; linea < lineas; linea++)
+                {
+                    uint fila = filaBase + (uint)linea;
+
+                    if (linea == 0)
+                    {
+                        Celda(t.Cell().Row(fila).Column(2)).Text(letra).Bold().FontSize(9);
+                        Celda(t.Cell().Row(fila).Column(3)).Text("0").FontSize(8);
+                    }
+                    else
+                    {
+                        Celda(t.Cell().Row(fila).Column(2)).Background(Colors.Grey.Lighten3).Text("");
+                        Celda(t.Cell().Row(fila).Column(3)).Background(Colors.Grey.Lighten3).Text("");
+                    }
+
+                    for (int i = 0; i < ColumnasPunto; i++)
+                    {
+                        int k = linea * ColumnasPunto + i;   // número de jugada
+                        string texto = "";
+                        if (k < n)
+                        {
+                            var pp = puntos[k];
+                            bool anotoEste = (pp.EquipoAnoto == "A") == esA;
+                            if (anotoEste) texto = (esA ? pp.PuntosA : pp.PuntosB).ToString();
+                        }
+                        Celda(t.Cell().Row(fila).Column((uint)(4 + i))).Text(texto).FontSize(8);
+                    }
+                }
+            }
+        });
+    }
+
+    // Dobles: un renglón por atleta; cada punto se anota en el renglón de quien saca después de ese punto.
+    // Si se acaba el espacio, se abre otra tabla debajo.
+    private static void DibujarSetDobles(ColumnDescriptor col, List<string> nombresFilas, List<int> idsA, List<int> idsB,
+        List<Models.PuntoPartido> puntos, int finalA, int finalB)
+    {
+        var idsFilas = idsA.Concat(idsB).ToList();
+        int n = puntos.Count;
+        int tablas = Math.Max(1, (int)Math.Ceiling(n / (double)ColumnasPunto));
+        uint colFinal = (uint)(4 + ColumnasPunto);
+
+        int sirveInicial = puntos[0].SirveAtletaId;
+        int recibeInicial = puntos[0].RecibeAtletaId;
+
+        // Renglón (0 a 3) donde va cada punto
+        var filaPorPunto = new int[n];
+        for (int k = 0; k < n; k++)
+        {
+            var (sirveId, _) = CalendarioService.CalcularServicioTrasPuntos(
+                idsA, idsB, sirveInicial, recibeInicial,
+                puntos.Take(k + 1).Select(p => p.EquipoAnoto));
+            filaPorPunto[k] = Math.Max(0, idsFilas.IndexOf(sirveId));
+        }
+
+        for (int tabla = 0; tabla < tablas; tabla++)
+        {
+            bool primera = tabla == 0;
+            bool ultima = tabla == tablas - 1;
+            int inicio = tabla * ColumnasPunto;
+
+            col.Item().PaddingTop(primera ? 0 : 4).Table(t =>
+            {
+                t.ColumnsDefinition(DefinirColumnasHoja);
+
+                for (int fila = 0; fila < 4; fila++)
+                {
+                    uint f = (uint)(fila + 1);
+                    int idJugador = idsFilas[fila];
+
+                    CeldaNombre(t.Cell().Row(f).Column(1)).Text(nombresFilas[fila]).Bold().FontSize(9);
+
+                    if (primera)
+                    {
+                        string letra = idJugador == sirveInicial ? "S" : idJugador == recibeInicial ? "R" : "";
+                        Celda(t.Cell().Row(f).Column(2)).Text(letra).Bold().FontSize(9);
+                        Celda(t.Cell().Row(f).Column(3)).Text(letra != "" ? "0" : "").FontSize(8);
+                    }
+                    else
+                    {
+                        Celda(t.Cell().Row(f).Column(2)).Background(Colors.Grey.Lighten3).Text("");
+                        Celda(t.Cell().Row(f).Column(3)).Background(Colors.Grey.Lighten3).Text("");
+                    }
+
+                    for (int i = 0; i < ColumnasPunto; i++)
+                    {
+                        int k = inicio + i;
+                        string texto = "";
+                        if (k < n && filaPorPunto[k] == fila)
+                            texto = (puntos[k].EquipoAnoto == "A" ? puntos[k].PuntosA : puntos[k].PuntosB).ToString();
+
+                        Celda(t.Cell().Row(f).Column((uint)(4 + i))).Text(texto).FontSize(8);
+                    }
+                }
+
+                // Marcador final: un cuadro por equipo (2 renglones cada uno), solo en la última tabla del set
+                Celda(t.Cell().Row(1).Column(colFinal).RowSpan(2)).Text(ultima ? finalA.ToString() : "").Bold().FontSize(11);
+                Celda(t.Cell().Row(3).Column(colFinal).RowSpan(2)).Text(ultima ? finalB.ToString() : "").Bold().FontSize(11);
+            });
+        }
     }
 
     private async Task HojaDetallePuntosAsync(XLWorkbook wb, TorneoContext db, int torneoId)
