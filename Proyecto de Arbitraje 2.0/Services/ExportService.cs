@@ -31,7 +31,6 @@ public class ExportService
         await HojaPosicionesAsync(wb, db, torneoId);
         await HojaResultadosFinalesAsync(wb, db, torneoId);
         await HojaRankingAsync(wb, db, torneoId);
-        await HojaDetallePuntosAsync(wb, db, torneoId);
 
         foreach (var ws in wb.Worksheets)
             ws.Columns().AdjustToContents();
@@ -39,6 +38,42 @@ public class ExportService
         using var ms = new MemoryStream();
         wb.SaveAs(ms);
         return ms.ToArray();
+    }
+
+    // Fila de separación con el nombre de la categoría
+    private static void BandaCategoria(IXLWorksheet ws, ref int fila, int totalColumnas, Models.Categoria cat)
+    {
+        var rango = ws.Range(fila, 1, fila, totalColumnas);
+        rango.Merge();
+        rango.FirstCell().Value = $"{cat.Nombre} · {cat.Modalidad} · {cat.Rama}";
+        rango.Style.Font.Bold = true;
+        rango.Style.Fill.BackgroundColor = XLColor.FromHtml("#D6E6E4");
+        rango.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
+        fila++;
+    }
+
+    // Total de partidos igual al del panel (existentes + los que faltan por generar)
+    private static async Task<int> CalcularPartidosTotalesAsync(TorneoContext db, List<Models.Categoria> categorias)
+    {
+        int total = 0;
+        foreach (var cat in categorias)
+        {
+            int totalActivos = await db.Competidores.CountAsync(c => c.CategoriaId == cat.Id && c.Activo);
+
+            var conteosPorGrupo = new List<int>();
+            if (cat.Formato == "GruposFaseFinal")
+            {
+                var gruposCat = await db.Grupos.Where(g => g.CategoriaId == cat.Id).Select(g => g.Id).ToListAsync();
+                foreach (var grupoId in gruposCat)
+                    conteosPorGrupo.Add(await db.Competidores.CountAsync(c => c.GrupoId == grupoId && c.Activo));
+            }
+
+            int rondaInicial = await db.Partidos.CountAsync(p => p.CategoriaId == cat.Id && (p.Fase == "Grupos" || p.Fase == "Liga"));
+            int faseFinal = await db.Partidos.CountAsync(p => p.CategoriaId == cat.Id && p.Fase != "Grupos" && p.Fase != "Liga");
+
+            total += PartidosProyectados.Calcular(cat, conteosPorGrupo, totalActivos, rondaInicial, faseFinal);
+        }
+        return total;
     }
 
     private static void Encabezado(IXLWorksheet ws, params string[] columnas)
@@ -58,29 +93,54 @@ public class ExportService
     {
         var ws = wb.Worksheets.Add("Resumen");
 
-        var categoriaIds = await db.Categorias.Where(c => c.TorneoId == torneo.Id).Select(c => c.Id).ToListAsync();
-        int totalCategorias = categoriaIds.Count;
-        int totalAtletas = await db.Competidores.CountAsync(c => categoriaIds.Contains(c.CategoriaId));
-        int totalPartidos = await db.Partidos.CountAsync(p => categoriaIds.Contains(p.CategoriaId));
+        var categorias = await db.Categorias.Where(c => c.TorneoId == torneo.Id).ToListAsync();
+        var categoriaIds = categorias.Select(c => c.Id).ToList();
+
+        int totalAtletas = await db.CompetidorIntegrantes
+            .Where(ci => categoriaIds.Contains(ci.Competidor.CategoriaId))
+            .Select(ci => ci.AtletaId)
+            .Distinct()
+            .CountAsync();
+
+        bool hayDobles = categorias.Any(c => c.Modalidad == "Dobles");
+        int totalParejas = hayDobles
+            ? await db.Competidores.CountAsync(c => categoriaIds.Contains(c.CategoriaId) && c.Categoria.Modalidad == "Dobles")
+            : 0;
+
+        int totalPartidos = await CalcularPartidosTotalesAsync(db, categorias);
         int partidosJugados = await db.Partidos.CountAsync(p => categoriaIds.Contains(p.CategoriaId) && p.Estado == "Jugado");
 
-        string estadoActual = !categoriaIds.Any() || totalPartidos == 0
-            ? "Planeado"
-            : (partidosJugados == totalPartidos ? "Jugado" : "Pendiente");
-        
-        var filas = new (string, string)[]
-        {
-            ("Torneo", torneo.Nombre),
-            ("Fecha", torneo.Fecha.ToString("dd/MM/yyyy")),
-            ("Estado", estadoActual),
-            ("Categorías", totalCategorias.ToString()),
-            ("Competidores inscritos", totalAtletas.ToString()),
-            ("Partidos totales", totalPartidos.ToString()),
-            ("Partidos jugados", partidosJugados.ToString()),
-            ("Reporte generado", DateTime.Now.ToString("dd/MM/yyyy HH:mm")),
-        };
+        string estadoActual = totalPartidos == 0 ? "Planeado" : (partidosJugados == totalPartidos ? "Jugado" : "Pendiente");
 
-        for (int i = 0; i < filas.Length; i++)
+        // Inicio: primer partido capturado. Finalización: último partido, solo si ya se jugaron todos.
+        DateTime? inicio = await db.Partidos
+            .Where(p => categoriaIds.Contains(p.CategoriaId) && p.Estado == "Jugado" && p.FechaCaptura != null)
+            .MinAsync(p => p.FechaCaptura);
+
+        DateTime? fin = null;
+        if (estadoActual == "Jugado")
+        {
+            fin = await db.Partidos
+                .Where(p => categoriaIds.Contains(p.CategoriaId) && p.Estado == "Jugado" && p.FechaCaptura != null)
+                .MaxAsync(p => p.FechaCaptura);
+        }
+
+        var filas = new List<(string, string)>
+    {
+        ("Torneo", torneo.Nombre),
+        ("Fecha", torneo.Fecha.ToString("dd/MM/yyyy")),
+        ("Estado", estadoActual),
+        ("Categorías", categorias.Count.ToString()),
+        ("Atletas inscritos", totalAtletas.ToString()),
+    };
+        if (hayDobles) filas.Add(("Parejas inscritas", totalParejas.ToString()));
+        filas.Add(("Partidos totales", totalPartidos.ToString()));
+        filas.Add(("Partidos jugados", partidosJugados.ToString()));
+        filas.Add(("Inicio del torneo", inicio?.ToString("dd/MM/yyyy HH:mm") ?? "Aún no se captura ningún partido"));
+        filas.Add(("Finalización", fin?.ToString("dd/MM/yyyy HH:mm") ?? (estadoActual == "Planeado" ? "Aún no inicia" : "En curso")));
+        filas.Add(("Reporte generado", DateTime.Now.ToString("dd/MM/yyyy HH:mm")));
+
+        for (int i = 0; i < filas.Count; i++)
         {
             ws.Cell(i + 1, 1).Value = filas[i].Item1;
             ws.Cell(i + 1, 1).Style.Font.Bold = true;
@@ -101,26 +161,35 @@ public class ExportService
             .ToListAsync();
 
         int fila = 2;
-        foreach (var c in competidores.OrderBy(c => c.Categoria.Nombre).ThenBy(c => c.Categoria.Modalidad).ThenBy(c => c.Categoria.Rama))
-        {
-            foreach (var integrante in c.CompetidorIntegrantes)
-            {
-                var atleta = integrante.Atleta;
-                string companeros = string.Join(" / ", c.CompetidorIntegrantes
-                    .Where(ci => ci.AtletaId != atleta.Id)
-                    .Select(ci => ci.Atleta.Nombre));
+        var porCategoria = competidores
+            .OrderBy(c => c.Categoria.Nombre).ThenBy(c => c.Categoria.Modalidad).ThenBy(c => c.Categoria.Rama).ThenBy(c => c.CategoriaId)
+            .GroupBy(c => c.CategoriaId);
 
-                ws.Cell(fila, 1).Value = c.Categoria.Nombre;
-                ws.Cell(fila, 2).Value = c.Categoria.Modalidad;
-                ws.Cell(fila, 3).Value = c.Categoria.Rama;
-                ws.Cell(fila, 4).Value = c.Grupo?.Letra ?? "";
-                ws.Cell(fila, 5).Value = atleta.Nombre;
-                ws.Cell(fila, 6).Value = atleta.Municipio?.Nombre ?? "";
-                ws.Cell(fila, 7).Value = atleta.Genero ?? "";
-                ws.Cell(fila, 8).Value = atleta.AnioNacimiento?.ToString() ?? "";
-                ws.Cell(fila, 9).Value = companeros;
-                ws.Cell(fila, 10).Value = c.Activo ? "Activo" : "Baja";
-                fila++;
+        foreach (var grupoCat in porCategoria)
+        {
+            BandaCategoria(ws, ref fila, 10, grupoCat.First().Categoria);
+
+            foreach (var c in grupoCat)
+            {
+                foreach (var integrante in c.CompetidorIntegrantes)
+                {
+                    var atleta = integrante.Atleta;
+                    string companeros = string.Join(" / ", c.CompetidorIntegrantes
+                        .Where(ci => ci.AtletaId != atleta.Id)
+                        .Select(ci => ci.Atleta.Nombre));
+
+                    ws.Cell(fila, 1).Value = c.Categoria.Nombre;
+                    ws.Cell(fila, 2).Value = c.Categoria.Modalidad;
+                    ws.Cell(fila, 3).Value = c.Categoria.Rama;
+                    ws.Cell(fila, 4).Value = c.Grupo?.Letra ?? "";
+                    ws.Cell(fila, 5).Value = atleta.Nombre;
+                    ws.Cell(fila, 6).Value = atleta.Municipio?.Nombre ?? "";
+                    ws.Cell(fila, 7).Value = atleta.Genero ?? "";
+                    ws.Cell(fila, 8).Value = atleta.AnioNacimiento?.ToString() ?? "";
+                    ws.Cell(fila, 9).Value = companeros;
+                    ws.Cell(fila, 10).Value = c.Activo ? "Activo" : "Baja";
+                    fila++;
+                }
             }
         }
     }
@@ -139,31 +208,37 @@ public class ExportService
             .Include(p => p.CompetidorA).ThenInclude(c => c.CompetidorIntegrantes).ThenInclude(ci => ci.Atleta)
             .Include(p => p.CompetidorB).ThenInclude(c => c.CompetidorIntegrantes).ThenInclude(ci => ci.Atleta)
             .Include(p => p.SetsPartidos)
-            .OrderBy(p => p.Categoria.Nombre).ThenBy(p => p.Fase).ThenBy(p => p.Jornada).ThenBy(p => p.OrdenCola)
+            .OrderBy(p => p.Categoria.Nombre).ThenBy(p => p.Categoria.Modalidad).ThenBy(p => p.Categoria.Rama).ThenBy(p => p.CategoriaId)
+            .ThenBy(p => p.Fase).ThenBy(p => p.Jornada).ThenBy(p => p.OrdenCola)
             .ToListAsync();
 
         int fila = 2;
-        foreach (var p in partidos)
+        foreach (var grupoCat in partidos.GroupBy(p => p.CategoriaId))
         {
-            string nombreA = string.Join(" / ", p.CompetidorA.CompetidorIntegrantes.Select(ci => ci.Atleta.Nombre));
-            string nombreB = string.Join(" / ", p.CompetidorB.CompetidorIntegrantes.Select(ci => ci.Atleta.Nombre));
-            var sets = p.SetsPartidos.OrderBy(s => s.NumeroSet).ToList();
+            BandaCategoria(ws, ref fila, 14, grupoCat.First().Categoria);
 
-            ws.Cell(fila, 1).Value = $"{p.Categoria.Nombre} · {p.Categoria.Modalidad} · {p.Categoria.Rama}";
-            ws.Cell(fila, 2).Value = p.Fase;
-            ws.Cell(fila, 3).Value = p.Grupo?.Letra ?? (p.Banda?.ToString() ?? "");
-            ws.Cell(fila, 4).Value = p.Jornada?.ToString() ?? "";
-            ws.Cell(fila, 5).Value = nombreA;
-            ws.Cell(fila, 6).Value = nombreB;
-            ws.Cell(fila, 7).Value = sets.Count > 0 ? $"{sets[0].PuntosA}-{sets[0].PuntosB}" : "";
-            ws.Cell(fila, 8).Value = sets.Count > 1 ? $"{sets[1].PuntosA}-{sets[1].PuntosB}" : "";
-            ws.Cell(fila, 9).Value = sets.Count > 2 ? $"{sets[2].PuntosA}-{sets[2].PuntosB}" : "";
-            ws.Cell(fila, 10).Value = p.GanadorId == p.CompetidorAid ? nombreA : (p.GanadorId == p.CompetidorBid ? nombreB : "");
-            ws.Cell(fila, 11).Value = p.Cancha?.Numero.ToString() ?? "";
-            ws.Cell(fila, 12).Value = p.FechaCaptura?.ToString("dd/MM/yyyy HH:mm") ?? "";
-            ws.Cell(fila, 13).Value = p.EsDefault ? "Sí" : "No";
-            ws.Cell(fila, 14).Value = p.Estado;
-            fila++;
+            foreach (var p in grupoCat)
+            {
+                string nombreA = string.Join(" / ", p.CompetidorA.CompetidorIntegrantes.Select(ci => ci.Atleta.Nombre));
+                string nombreB = string.Join(" / ", p.CompetidorB.CompetidorIntegrantes.Select(ci => ci.Atleta.Nombre));
+                var sets = p.SetsPartidos.OrderBy(s => s.NumeroSet).ToList();
+
+                ws.Cell(fila, 1).Value = $"{p.Categoria.Nombre} · {p.Categoria.Modalidad} · {p.Categoria.Rama}";
+                ws.Cell(fila, 2).Value = p.Fase;
+                ws.Cell(fila, 3).Value = p.Grupo?.Letra ?? (p.Banda?.ToString() ?? "");
+                ws.Cell(fila, 4).Value = p.Jornada?.ToString() ?? "";
+                ws.Cell(fila, 5).Value = nombreA;
+                ws.Cell(fila, 6).Value = nombreB;
+                ws.Cell(fila, 7).Value = sets.Count > 0 ? $"{sets[0].PuntosA}-{sets[0].PuntosB}" : "";
+                ws.Cell(fila, 8).Value = sets.Count > 1 ? $"{sets[1].PuntosA}-{sets[1].PuntosB}" : "";
+                ws.Cell(fila, 9).Value = sets.Count > 2 ? $"{sets[2].PuntosA}-{sets[2].PuntosB}" : "";
+                ws.Cell(fila, 10).Value = p.GanadorId == p.CompetidorAid ? nombreA : (p.GanadorId == p.CompetidorBid ? nombreB : "");
+                ws.Cell(fila, 11).Value = p.Cancha?.Numero.ToString() ?? "";
+                ws.Cell(fila, 12).Value = p.FechaCaptura?.ToString("dd/MM/yyyy HH:mm") ?? "";
+                ws.Cell(fila, 13).Value = p.EsDefault ? "Sí" : "No";
+                ws.Cell(fila, 14).Value = p.Estado;
+                fila++;
+            }
         }
     }
 
@@ -178,8 +253,10 @@ public class ExportService
             .ToListAsync();
 
         int fila = 2;
-        foreach (var cat in categorias.OrderBy(c => c.Nombre))
+        foreach (var cat in categorias.OrderBy(c => c.Nombre).ThenBy(c => c.Modalidad).ThenBy(c => c.Rama))
         {
+            BandaCategoria(ws, ref fila, 12, cat);
+            
             if (cat.Formato == "GruposFaseFinal")
             {
                 var competidores = await db.Competidores
@@ -269,8 +346,11 @@ public class ExportService
         };
 
         int fila = 2;
-        foreach (var g in historial.GroupBy(r => r.Categoria).OrderBy(g => g.Key.Nombre))
+        foreach (var g in historial.GroupBy(r => r.Categoria)
+             .OrderBy(g => g.Key.Nombre).ThenBy(g => g.Key.Modalidad).ThenBy(g => g.Key.Rama))
         {
+            BandaCategoria(ws, ref fila, 3, g.Key);
+
             foreach (var pos in g.Select(r => r.Posicion).Distinct().OrderBy(p => p))
             {
                 var nombres = string.Join(" / ", g.Where(r => r.Posicion == pos).Select(r => r.Atleta.Nombre));
@@ -362,8 +442,8 @@ public class ExportService
 
                             fila.RelativeItem(5).Row(r =>
                             {
-                                r.RelativeItem().Element(x => CajaNombres(x, nombresB, municipioB));
-                                r.ConstantItem(34).AlignTop().AlignRight().Element(x => CuadroSets(x, setsGanadosB));
+                                r.RelativeItem().Element(x => CajaNombres(x, nombresB, municipioB, true));
+                                r.ConstantItem(34).AlignTop().AlignRight().Element(x => CuadroSets(x, setsGanadosB, true));
                             });
                         });
                     });
@@ -401,20 +481,33 @@ public class ExportService
         return documento.GeneratePdf();
     }
 
-    private static IContainer Celda(IContainer c, bool lineaGruesaAbajo = false) =>
-    c.Border(0.5f).BorderBottom(lineaGruesaAbajo ? 2f : 0.5f).BorderColor(Colors.Grey.Darken3)
-     .MinHeight(17).AlignCenter().AlignMiddle();
-
-    private static IContainer CeldaNombre(IContainer c, bool lineaGruesaAbajo = false) =>
-        c.Border(0.5f).BorderBottom(lineaGruesaAbajo ? 2f : 0.5f).BorderColor(Colors.Grey.Darken3)
-         .MinHeight(17).PaddingLeft(3).AlignLeft().AlignMiddle();
-
-    private static void CuadroSets(IContainer c, int sets) =>
-        c.Width(28).Height(28).Border(1).AlignCenter().AlignMiddle().Text(sets.ToString()).FontSize(14).Bold();
-
-    private static void CajaNombres(IContainer c, List<string> nombres, string municipio)
+    private static IContainer Celda(IContainer c, bool lineaGruesaAbajo = false, bool sombreado = false)
     {
-        c.Border(1).Column(col =>
+        var celda = c.Border(0.5f).BorderBottom(lineaGruesaAbajo ? 2f : 0.5f).BorderColor(Colors.Grey.Darken3)
+                     .MinHeight(17).AlignCenter().AlignMiddle();
+        return sombreado ? celda.Background(Colors.Grey.Lighten3) : celda;
+    }
+
+    private static IContainer CeldaNombre(IContainer c, bool lineaGruesaAbajo = false, bool sombreado = false)
+    {
+        var celda = c.Border(0.5f).BorderBottom(lineaGruesaAbajo ? 2f : 0.5f).BorderColor(Colors.Grey.Darken3)
+                     .MinHeight(17).PaddingLeft(3).AlignLeft().AlignMiddle();
+        return sombreado ? celda.Background(Colors.Grey.Lighten3) : celda;
+    }
+
+    private static void CuadroSets(IContainer c, int sets, bool sombreado = false)
+    {
+        var cuadro = c.Width(28).Height(28).Border(1);
+        if (sombreado) cuadro = cuadro.Background(Colors.Grey.Lighten3);
+        cuadro.AlignCenter().AlignMiddle().Text(sets.ToString()).FontSize(14).Bold();
+    }
+
+    private static void CajaNombres(IContainer c, List<string> nombres, string municipio, bool sombreado = false)
+    {
+        var caja = c.Border(1);
+        if (sombreado) caja = caja.Background(Colors.Grey.Lighten3);
+
+        caja.Column(col =>
         {
             if (nombres.Count < 2)
             {
@@ -487,10 +580,11 @@ public class ExportService
                 string letra = esA == sirveEsA ? "S" : "R";
                 int puntosFinal = esA ? finalA : finalB;
                 uint filaBase = (uint)(jugador * lineas + 1);
-                bool separador = esA;   // la línea gruesa va debajo del primer jugador
+                bool separador = esA;     // línea gruesa debajo del primer jugador
+                bool sombreado = !esA;    // el segundo jugador va en gris
 
-                CeldaNombre(t.Cell().Row(filaBase).Column(1).RowSpan((uint)lineas), separador).Text(nombre).Bold().FontSize(9);
-                Celda(t.Cell().Row(filaBase).Column(colFinal).RowSpan((uint)lineas), separador).Text(puntosFinal.ToString()).Bold().FontSize(11);
+                CeldaNombre(t.Cell().Row(filaBase).Column(1).RowSpan((uint)lineas), separador, sombreado).Text(nombre).Bold().FontSize(9);
+                Celda(t.Cell().Row(filaBase).Column(colFinal).RowSpan((uint)lineas), separador, sombreado).Text(puntosFinal.ToString()).Bold().FontSize(11);
 
                 for (int linea = 0; linea < lineas; linea++)
                 {
@@ -499,13 +593,13 @@ public class ExportService
 
                     if (linea == 0)
                     {
-                        Celda(t.Cell().Row(fila).Column(2), gruesa).Text(letra).Bold().FontSize(9);
-                        Celda(t.Cell().Row(fila).Column(3), gruesa).Text("0").FontSize(8);
+                        Celda(t.Cell().Row(fila).Column(2), gruesa, sombreado).Text(letra).Bold().FontSize(9);
+                        Celda(t.Cell().Row(fila).Column(3), gruesa, sombreado).Text("0").FontSize(8);
                     }
                     else
                     {
-                        Celda(t.Cell().Row(fila).Column(2), gruesa).Background(Colors.Grey.Lighten3).Text("");
-                        Celda(t.Cell().Row(fila).Column(3), gruesa).Background(Colors.Grey.Lighten3).Text("");
+                        Celda(t.Cell().Row(fila).Column(2), gruesa, sombreado).Text("");
+                        Celda(t.Cell().Row(fila).Column(3), gruesa, sombreado).Text("");
                     }
 
                     for (int i = 0; i < ColumnasPunto; i++)
@@ -518,7 +612,7 @@ public class ExportService
                             bool anotoEste = (pp.EquipoAnoto == "A") == esA;
                             if (anotoEste) texto = (esA ? pp.PuntosA : pp.PuntosB).ToString();
                         }
-                        Celda(t.Cell().Row(fila).Column((uint)(4 + i)), gruesa).Text(texto).FontSize(8);
+                        Celda(t.Cell().Row(fila).Column((uint)(4 + i)), gruesa, sombreado).Text(texto).FontSize(8);
                     }
                 }
             }
@@ -561,20 +655,21 @@ public class ExportService
                 {
                     uint f = (uint)(fila + 1);
                     int idJugador = idsFilas[fila];
-                    bool gruesa = fila == 1;   // línea gruesa entre una pareja y la otra
+                    bool gruesa = fila == 1;       // línea gruesa entre una pareja y la otra
+                    bool sombreado = fila >= 2;    // la segunda pareja va en gris
 
-                    CeldaNombre(t.Cell().Row(f).Column(1), gruesa).Text(nombresFilas[fila]).Bold().FontSize(9);
+                    CeldaNombre(t.Cell().Row(f).Column(1), gruesa, sombreado).Text(nombresFilas[fila]).Bold().FontSize(9);
 
                     if (primera)
                     {
                         string letra = idJugador == sirveInicial ? "S" : idJugador == recibeInicial ? "R" : "";
-                        Celda(t.Cell().Row(f).Column(2), gruesa).Text(letra).Bold().FontSize(9);
-                        Celda(t.Cell().Row(f).Column(3), gruesa).Text(letra != "" ? "0" : "").FontSize(8);
+                        Celda(t.Cell().Row(f).Column(2), gruesa, sombreado).Text(letra).Bold().FontSize(9);
+                        Celda(t.Cell().Row(f).Column(3), gruesa, sombreado).Text(letra != "" ? "0" : "").FontSize(8);
                     }
                     else
                     {
-                        Celda(t.Cell().Row(f).Column(2), gruesa).Background(Colors.Grey.Lighten3).Text("");
-                        Celda(t.Cell().Row(f).Column(3), gruesa).Background(Colors.Grey.Lighten3).Text("");
+                        Celda(t.Cell().Row(f).Column(2), gruesa, sombreado).Text("");
+                        Celda(t.Cell().Row(f).Column(3), gruesa, sombreado).Text("");
                     }
 
                     for (int i = 0; i < ColumnasPunto; i++)
@@ -584,55 +679,15 @@ public class ExportService
                         if (k < n && filaPorPunto[k] == fila)
                             texto = (puntos[k].EquipoAnoto == "A" ? puntos[k].PuntosA : puntos[k].PuntosB).ToString();
 
-                        Celda(t.Cell().Row(f).Column((uint)(4 + i)), gruesa).Text(texto).FontSize(8);
+                        Celda(t.Cell().Row(f).Column((uint)(4 + i)), gruesa, sombreado).Text(texto).FontSize(8);
                     }
                 }
 
-                Celda(t.Cell().Row(1).Column(colFinal).RowSpan(2), true).Text(ultima ? finalA.ToString() : "").Bold().FontSize(11);
-                Celda(t.Cell().Row(3).Column(colFinal).RowSpan(2)).Text(ultima ? finalB.ToString() : "").Bold().FontSize(11);
+                Celda(t.Cell().Row(1).Column(colFinal).RowSpan(2), true, false).Text(ultima ? finalA.ToString() : "").Bold().FontSize(11);
+                Celda(t.Cell().Row(3).Column(colFinal).RowSpan(2), false, true).Text(ultima ? finalB.ToString() : "").Bold().FontSize(11);
             });
         }
-    }
-
-    private async Task HojaDetallePuntosAsync(XLWorkbook wb, TorneoContext db, int torneoId)
-    {
-        var categoriaIds = await db.Categorias.Where(c => c.TorneoId == torneoId).Select(c => c.Id).ToListAsync();
-
-        var puntos = await db.PuntosPartido
-            .Where(pp => categoriaIds.Contains(pp.Partido.CategoriaId))
-            .Include(pp => pp.Partido).ThenInclude(p => p.Categoria)
-            .Include(pp => pp.Partido).ThenInclude(p => p.CompetidorA).ThenInclude(c => c.CompetidorIntegrantes).ThenInclude(ci => ci.Atleta)
-            .Include(pp => pp.Partido).ThenInclude(p => p.CompetidorB).ThenInclude(c => c.CompetidorIntegrantes).ThenInclude(ci => ci.Atleta)
-            .Include(pp => pp.SirveAtleta)
-            .Include(pp => pp.RecibeAtleta)
-            .OrderBy(pp => pp.Partido.CategoriaId)
-            .ThenBy(pp => pp.PartidoId)
-            .ThenBy(pp => pp.NumeroSet)
-            .ThenBy(pp => pp.NumeroPunto)
-            .ToListAsync();
-
-        if (!puntos.Any()) return;
-
-        var ws = wb.Worksheets.Add("Detalle de Puntos");
-        Encabezado(ws, "Categoría", "Partido", "Set", "Punto", "Puntuó", "Marcador", "Sirve", "Recibe");
-
-        int fila = 2;
-        foreach (var pp in puntos)
-        {
-            string nombreA = string.Join(" / ", pp.Partido.CompetidorA.CompetidorIntegrantes.Select(ci => ci.Atleta.Nombre));
-            string nombreB = string.Join(" / ", pp.Partido.CompetidorB.CompetidorIntegrantes.Select(ci => ci.Atleta.Nombre));
-
-            ws.Cell(fila, 1).Value = $"{pp.Partido.Categoria.Nombre} · {pp.Partido.Categoria.Modalidad} · {pp.Partido.Categoria.Rama}";
-            ws.Cell(fila, 2).Value = $"{nombreA} vs {nombreB}";
-            ws.Cell(fila, 3).Value = pp.NumeroSet;
-            ws.Cell(fila, 4).Value = pp.NumeroPunto;
-            ws.Cell(fila, 5).Value = pp.EquipoAnoto == "A" ? nombreA : nombreB;
-            ws.Cell(fila, 6).Value = $"{pp.PuntosA}-{pp.PuntosB}";
-            ws.Cell(fila, 7).Value = pp.NumeroPunto == 1 ? pp.SirveAtleta.Nombre : "";
-            ws.Cell(fila, 8).Value = pp.NumeroPunto == 1 ? pp.RecibeAtleta.Nombre : "";
-            fila++;
-        }
-    }
+    }   
 
     private async Task HojaRankingAsync(XLWorkbook wb, TorneoContext db, int torneoId)
     {
@@ -643,17 +698,22 @@ public class ExportService
             .Where(r => r.TorneoId == torneoId)
             .Include(r => r.Atleta)
             .Include(r => r.Categoria)
-            .OrderBy(r => r.Atleta.Nombre)
             .ToListAsync();
 
         int fila = 2;
-        foreach (var r in historial)
+        foreach (var g in historial.GroupBy(r => r.CategoriaId)
+             .OrderBy(g => g.First().Categoria.Nombre).ThenBy(g => g.First().Categoria.Modalidad).ThenBy(g => g.First().Categoria.Rama))
         {
-            ws.Cell(fila, 1).Value = r.Atleta.Nombre;
-            ws.Cell(fila, 2).Value = $"{r.Categoria.Nombre} · {r.Categoria.Modalidad} · {r.Categoria.Rama}";
-            ws.Cell(fila, 3).Value = r.Posicion;
-            ws.Cell(fila, 4).Value = r.Puntos;
-            fila++;
+            BandaCategoria(ws, ref fila, 4, g.First().Categoria);
+
+            foreach (var r in g.OrderBy(r => r.Posicion).ThenBy(r => r.Atleta.Nombre))
+            {
+                ws.Cell(fila, 1).Value = r.Atleta.Nombre;
+                ws.Cell(fila, 2).Value = $"{r.Categoria.Nombre} · {r.Categoria.Modalidad} · {r.Categoria.Rama}";
+                ws.Cell(fila, 3).Value = r.Posicion;
+                ws.Cell(fila, 4).Value = r.Puntos;
+                fila++;
+            }
         }
     }
 }

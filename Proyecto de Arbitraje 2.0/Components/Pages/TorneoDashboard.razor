@@ -69,7 +69,10 @@
                     </div>
 
                     <div class="cat-meta">
-                        @c.NumAtletas atletas
+                        @c.NumAtletas @(c.Categoria.Modalidad == "Dobles"
+                            ? (c.NumAtletas == 1 ? "pareja" : "parejas")
+                            : (c.NumAtletas == 1 ? "atleta" : "atletas"))
+
                         @if (c.Categoria.Formato == "GruposFaseFinal")
                         {
                             <span> · @c.NumGrupos grupos</span>
@@ -240,7 +243,7 @@
             int partidosRondaInicialReales = await db.Partidos.CountAsync(p => p.CategoriaId == cat.Id && (p.Fase == "Grupos" || p.Fase == "Liga"));
             int partidosFaseFinalReales = await db.Partidos.CountAsync(p => p.CategoriaId == cat.Id && p.Fase != "Grupos" && p.Fase != "Liga");
 
-            r.PartidosTotal = CalcularPartidosProyectados(cat, conteosPorGrupo, totalActivos, null, partidosRondaInicialReales, partidosFaseFinalReales);
+            r.PartidosTotal = ProyectoArbitraje.Services.PartidosProyectados.Calcular(cat, conteosPorGrupo, totalActivos, partidosRondaInicialReales, partidosFaseFinalReales);
             r.PartidosJugados = await db.Partidos.CountAsync(p => p.CategoriaId == cat.Id && p.Estado == "Jugado");
 
             if (cat.Formato == "Jornadas" || cat.Formato == "RoundRobin")
