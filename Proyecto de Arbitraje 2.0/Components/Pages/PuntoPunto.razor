@@ -104,7 +104,7 @@
                                 {
                                     @if (OpcionesSaque().Any(ci => ci.CompetidorId == partido.CompetidorAid))
                                     {
-                                        <optgroup label="@nombreA">
+                                        <optgroup label="@equipoA">
                                             @foreach (var ci in OpcionesSaque().Where(ci => ci.CompetidorId == partido.CompetidorAid))
                                             {
                                                 <option value="@ci.AtletaId">@ci.Atleta.Nombre</option>
@@ -113,7 +113,7 @@
                                     }
                                     @if (OpcionesSaque().Any(ci => ci.CompetidorId == partido.CompetidorBid))
                                     {
-                                        <optgroup label="@nombreB">
+                                        <optgroup label="@equipoB">
                                             @foreach (var ci in OpcionesSaque().Where(ci => ci.CompetidorId == partido.CompetidorBid))
                                             {
                                                 <option value="@ci.AtletaId">@ci.Atleta.Nombre</option>
@@ -127,7 +127,7 @@
                         @if (esDoblesEsteSet)
                         {
                             bool sirveEsA = partido.CompetidorA.CompetidorIntegrantes.Any(ci => ci.AtletaId == primerSirveElegido);
-                            string equipoReceptorNombre = primerSirveElegido == null ? "" : (sirveEsA ? nombreB : nombreA);
+                            string equipoReceptorNombre = primerSirveElegido == null ? "" : (sirveEsA ? equipoB : equipoA);
 
                             <div class="campo" style="max-width:260px;">
                                 <label>Recibe</label>
@@ -207,6 +207,8 @@
     private Partido? partido;
     private string nombreA = "";
     private string nombreB = "";
+    private string equipoA = "";
+    private string equipoB = "";
     private string modalidadSets = "2 de 3 Sets";
     private int puntosJuego = 21;
     private int puntosLimite = 30;
@@ -235,8 +237,8 @@
         using var db = await DbFactory.CreateDbContextAsync();
         partido = await db.Partidos
             .Include(p => p.Categoria)
-            .Include(p => p.CompetidorA).ThenInclude(c => c.CompetidorIntegrantes).ThenInclude(ci => ci.Atleta)
-            .Include(p => p.CompetidorB).ThenInclude(c => c.CompetidorIntegrantes).ThenInclude(ci => ci.Atleta)
+            .Include(p => p.CompetidorA).ThenInclude(c => c.CompetidorIntegrantes).ThenInclude(ci => ci.Atleta).ThenInclude(a => a.Municipio)
+            .Include(p => p.CompetidorB).ThenInclude(c => c.CompetidorIntegrantes).ThenInclude(ci => ci.Atleta).ThenInclude(a => a.Municipio)
             .FirstOrDefaultAsync(p => p.Id == PartidoId);
 
         if (partido == null) return;
@@ -265,6 +267,16 @@
 
         nombreA = string.Join(" / ", partido.CompetidorA.CompetidorIntegrantes.Select(ci => ci.Atleta.Nombre));
         nombreB = string.Join(" / ", partido.CompetidorB.CompetidorIntegrantes.Select(ci => ci.Atleta.Nombre));
+
+        equipoA = string.Join(" / ", partido.CompetidorA.CompetidorIntegrantes.Select(ci => ci.Atleta.Municipio.Nombre).Distinct());
+        equipoB = string.Join(" / ", partido.CompetidorB.CompetidorIntegrantes.Select(ci => ci.Atleta.Municipio.Nombre).Distinct());
+
+        // Si las dos parejas son del mismo equipo, se distinguen por número de pareja
+        if (equipoA == equipoB)
+        {
+            equipoA += " · Pareja 1";
+            equipoB += " · Pareja 2";
+        }
 
         var config = await db.Configuracions.FirstOrDefaultAsync(c => c.CategoriaId == partido.CategoriaId);
         bool esFaseFinal = partido.Fase != "Grupos" && partido.Fase != "Liga";

@@ -297,8 +297,8 @@ public class ExportService
             .Where(p => categoriaIds.Contains(p.CategoriaId) && p.PuntosPartido.Any())
             .Include(p => p.Categoria)
             .Include(p => p.SetsPartidos)
-            .Include(p => p.CompetidorA).ThenInclude(c => c.CompetidorIntegrantes).ThenInclude(ci => ci.Atleta)
-            .Include(p => p.CompetidorB).ThenInclude(c => c.CompetidorIntegrantes).ThenInclude(ci => ci.Atleta)
+            .Include(p => p.CompetidorA).ThenInclude(c => c.CompetidorIntegrantes).ThenInclude(ci => ci.Atleta).ThenInclude(a => a.Municipio)
+            .Include(p => p.CompetidorB).ThenInclude(c => c.CompetidorIntegrantes).ThenInclude(ci => ci.Atleta).ThenInclude(a => a.Municipio)
             .Include(p => p.PuntosPartido)
             .OrderBy(p => p.Categoria.Nombre)
             .ThenBy(p => p.Id)
@@ -314,6 +314,8 @@ public class ExportService
                 var integrantesB = partido.CompetidorB.CompetidorIntegrantes.ToList();
                 var nombresA = integrantesA.Select(ci => ci.Atleta.Nombre).ToList();
                 var nombresB = integrantesB.Select(ci => ci.Atleta.Nombre).ToList();
+                string municipioA = string.Join(" / ", integrantesA.Select(ci => ci.Atleta.Municipio.Nombre).Distinct());
+                string municipioB = string.Join(" / ", integrantesB.Select(ci => ci.Atleta.Municipio.Nombre).Distinct());
                 var idsA = integrantesA.Select(ci => ci.AtletaId).ToList();
                 var idsB = integrantesB.Select(ci => ci.AtletaId).ToList();
                 bool dobles = idsA.Count == 2 && idsB.Count == 2;
@@ -353,14 +355,14 @@ public class ExportService
                             fila.RelativeItem(5).Row(r =>
                             {
                                 r.ConstantItem(34).AlignTop().AlignLeft().Element(x => CuadroSets(x, setsGanadosA));
-                                r.RelativeItem().Element(x => CajaNombres(x, nombresA));
+                                r.RelativeItem().Element(x => CajaNombres(x, nombresA, municipioA));
                             });
 
                             fila.ConstantItem(170).PaddingHorizontal(12).Element(x => TablaMarcadores(x, marcadores));
 
                             fila.RelativeItem(5).Row(r =>
                             {
-                                r.RelativeItem().Element(x => CajaNombres(x, nombresB));
+                                r.RelativeItem().Element(x => CajaNombres(x, nombresB, municipioB));
                                 r.ConstantItem(34).AlignTop().AlignRight().Element(x => CuadroSets(x, setsGanadosB));
                             });
                         });
@@ -399,26 +401,36 @@ public class ExportService
         return documento.GeneratePdf();
     }
 
-    private static IContainer Celda(IContainer c) =>
-        c.Border(0.5f).BorderColor(Colors.Grey.Darken2).MinHeight(17).AlignCenter().AlignMiddle();
+    private static IContainer Celda(IContainer c, bool lineaGruesaAbajo = false) =>
+    c.Border(0.5f).BorderBottom(lineaGruesaAbajo ? 2f : 0.5f).BorderColor(Colors.Grey.Darken3)
+     .MinHeight(17).AlignCenter().AlignMiddle();
 
-    private static IContainer CeldaNombre(IContainer c) =>
-        c.Border(0.5f).BorderColor(Colors.Grey.Darken2).MinHeight(17).PaddingLeft(3).AlignLeft().AlignMiddle();
+    private static IContainer CeldaNombre(IContainer c, bool lineaGruesaAbajo = false) =>
+        c.Border(0.5f).BorderBottom(lineaGruesaAbajo ? 2f : 0.5f).BorderColor(Colors.Grey.Darken3)
+         .MinHeight(17).PaddingLeft(3).AlignLeft().AlignMiddle();
 
     private static void CuadroSets(IContainer c, int sets) =>
         c.Width(28).Height(28).Border(1).AlignCenter().AlignMiddle().Text(sets.ToString()).FontSize(14).Bold();
 
-    private static void CajaNombres(IContainer c, List<string> nombres)
+    private static void CajaNombres(IContainer c, List<string> nombres, string municipio)
     {
         c.Border(1).Column(col =>
         {
             if (nombres.Count < 2)
             {
-                col.Item().Height(44).AlignMiddle().PaddingLeft(6).Text(nombres.FirstOrDefault() ?? "").Bold().FontSize(11);
+                col.Item().Height(44).AlignMiddle().PaddingLeft(6).Column(interior =>
+                {
+                    interior.Item().Text(nombres.FirstOrDefault() ?? "").Bold().FontSize(11);
+                    interior.Item().Text(municipio).FontSize(8).FontColor(Colors.Grey.Darken2);
+                });
             }
             else
             {
-                col.Item().Height(22).AlignMiddle().PaddingLeft(6).Text(nombres[0]).Bold().FontSize(10);
+                col.Item().Height(22).AlignMiddle().PaddingLeft(6).Text(t =>
+                {
+                    t.Span(nombres[0]).Bold().FontSize(10);
+                    t.Span($"  ·  {municipio}").FontSize(8).FontColor(Colors.Grey.Darken2);
+                });
                 col.Item().BorderTop(0.5f).Height(22).AlignMiddle().PaddingLeft(6).Text(nombres[1]).Bold().FontSize(10);
             }
         });
@@ -458,7 +470,7 @@ public class ExportService
 
     // Singles: 2 renglones por jugador; si se acaba el espacio, sigue en el renglón de abajo
     private static void DibujarSetSingles(ColumnDescriptor col, string nombreA, string nombreB, bool sirveEsA,
-        List<Models.PuntoPartido> puntos, int finalA, int finalB)
+    List<Models.PuntoPartido> puntos, int finalA, int finalB)
     {
         int n = puntos.Count;
         int lineas = Math.Max(2, (int)Math.Ceiling(n / (double)ColumnasPunto));
@@ -475,28 +487,30 @@ public class ExportService
                 string letra = esA == sirveEsA ? "S" : "R";
                 int puntosFinal = esA ? finalA : finalB;
                 uint filaBase = (uint)(jugador * lineas + 1);
+                bool separador = esA;   // la línea gruesa va debajo del primer jugador
 
-                CeldaNombre(t.Cell().Row(filaBase).Column(1).RowSpan((uint)lineas)).Text(nombre).Bold().FontSize(9);
-                Celda(t.Cell().Row(filaBase).Column(colFinal).RowSpan((uint)lineas)).Text(puntosFinal.ToString()).Bold().FontSize(11);
+                CeldaNombre(t.Cell().Row(filaBase).Column(1).RowSpan((uint)lineas), separador).Text(nombre).Bold().FontSize(9);
+                Celda(t.Cell().Row(filaBase).Column(colFinal).RowSpan((uint)lineas), separador).Text(puntosFinal.ToString()).Bold().FontSize(11);
 
                 for (int linea = 0; linea < lineas; linea++)
                 {
                     uint fila = filaBase + (uint)linea;
+                    bool gruesa = separador && linea == lineas - 1;
 
                     if (linea == 0)
                     {
-                        Celda(t.Cell().Row(fila).Column(2)).Text(letra).Bold().FontSize(9);
-                        Celda(t.Cell().Row(fila).Column(3)).Text("0").FontSize(8);
+                        Celda(t.Cell().Row(fila).Column(2), gruesa).Text(letra).Bold().FontSize(9);
+                        Celda(t.Cell().Row(fila).Column(3), gruesa).Text("0").FontSize(8);
                     }
                     else
                     {
-                        Celda(t.Cell().Row(fila).Column(2)).Background(Colors.Grey.Lighten3).Text("");
-                        Celda(t.Cell().Row(fila).Column(3)).Background(Colors.Grey.Lighten3).Text("");
+                        Celda(t.Cell().Row(fila).Column(2), gruesa).Background(Colors.Grey.Lighten3).Text("");
+                        Celda(t.Cell().Row(fila).Column(3), gruesa).Background(Colors.Grey.Lighten3).Text("");
                     }
 
                     for (int i = 0; i < ColumnasPunto; i++)
                     {
-                        int k = linea * ColumnasPunto + i;   // número de jugada
+                        int k = linea * ColumnasPunto + i;
                         string texto = "";
                         if (k < n)
                         {
@@ -504,7 +518,7 @@ public class ExportService
                             bool anotoEste = (pp.EquipoAnoto == "A") == esA;
                             if (anotoEste) texto = (esA ? pp.PuntosA : pp.PuntosB).ToString();
                         }
-                        Celda(t.Cell().Row(fila).Column((uint)(4 + i))).Text(texto).FontSize(8);
+                        Celda(t.Cell().Row(fila).Column((uint)(4 + i)), gruesa).Text(texto).FontSize(8);
                     }
                 }
             }
@@ -514,7 +528,7 @@ public class ExportService
     // Dobles: un renglón por atleta; cada punto se anota en el renglón de quien saca después de ese punto.
     // Si se acaba el espacio, se abre otra tabla debajo.
     private static void DibujarSetDobles(ColumnDescriptor col, List<string> nombresFilas, List<int> idsA, List<int> idsB,
-        List<Models.PuntoPartido> puntos, int finalA, int finalB)
+    List<Models.PuntoPartido> puntos, int finalA, int finalB)
     {
         var idsFilas = idsA.Concat(idsB).ToList();
         int n = puntos.Count;
@@ -524,7 +538,6 @@ public class ExportService
         int sirveInicial = puntos[0].SirveAtletaId;
         int recibeInicial = puntos[0].RecibeAtletaId;
 
-        // Renglón (0 a 3) donde va cada punto
         var filaPorPunto = new int[n];
         for (int k = 0; k < n; k++)
         {
@@ -548,19 +561,20 @@ public class ExportService
                 {
                     uint f = (uint)(fila + 1);
                     int idJugador = idsFilas[fila];
+                    bool gruesa = fila == 1;   // línea gruesa entre una pareja y la otra
 
-                    CeldaNombre(t.Cell().Row(f).Column(1)).Text(nombresFilas[fila]).Bold().FontSize(9);
+                    CeldaNombre(t.Cell().Row(f).Column(1), gruesa).Text(nombresFilas[fila]).Bold().FontSize(9);
 
                     if (primera)
                     {
                         string letra = idJugador == sirveInicial ? "S" : idJugador == recibeInicial ? "R" : "";
-                        Celda(t.Cell().Row(f).Column(2)).Text(letra).Bold().FontSize(9);
-                        Celda(t.Cell().Row(f).Column(3)).Text(letra != "" ? "0" : "").FontSize(8);
+                        Celda(t.Cell().Row(f).Column(2), gruesa).Text(letra).Bold().FontSize(9);
+                        Celda(t.Cell().Row(f).Column(3), gruesa).Text(letra != "" ? "0" : "").FontSize(8);
                     }
                     else
                     {
-                        Celda(t.Cell().Row(f).Column(2)).Background(Colors.Grey.Lighten3).Text("");
-                        Celda(t.Cell().Row(f).Column(3)).Background(Colors.Grey.Lighten3).Text("");
+                        Celda(t.Cell().Row(f).Column(2), gruesa).Background(Colors.Grey.Lighten3).Text("");
+                        Celda(t.Cell().Row(f).Column(3), gruesa).Background(Colors.Grey.Lighten3).Text("");
                     }
 
                     for (int i = 0; i < ColumnasPunto; i++)
@@ -570,12 +584,11 @@ public class ExportService
                         if (k < n && filaPorPunto[k] == fila)
                             texto = (puntos[k].EquipoAnoto == "A" ? puntos[k].PuntosA : puntos[k].PuntosB).ToString();
 
-                        Celda(t.Cell().Row(f).Column((uint)(4 + i))).Text(texto).FontSize(8);
+                        Celda(t.Cell().Row(f).Column((uint)(4 + i)), gruesa).Text(texto).FontSize(8);
                     }
                 }
 
-                // Marcador final: un cuadro por equipo (2 renglones cada uno), solo en la última tabla del set
-                Celda(t.Cell().Row(1).Column(colFinal).RowSpan(2)).Text(ultima ? finalA.ToString() : "").Bold().FontSize(11);
+                Celda(t.Cell().Row(1).Column(colFinal).RowSpan(2), true).Text(ultima ? finalA.ToString() : "").Bold().FontSize(11);
                 Celda(t.Cell().Row(3).Column(colFinal).RowSpan(2)).Text(ultima ? finalB.ToString() : "").Bold().FontSize(11);
             });
         }
