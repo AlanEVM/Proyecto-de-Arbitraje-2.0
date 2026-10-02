@@ -704,6 +704,24 @@ public class FaseFinalService
             partido.FechaCaptura = DateTime.Now;
             partido.CapturadoPor = usuario;
 
+            // En fase de grupos o liga también se acumulan las estadísticas (igual que en CapturarResultadoAsync)
+            if (partido.Fase == "Grupos" || partido.Fase == "Liga")
+            {
+                var compA = partido.CompetidorA;
+                var compB = partido.CompetidorB;
+
+                if (setsA > setsB) { compA.Pg++; compB.Pp++; }
+                else { compB.Pg++; compA.Pp++; }
+
+                compA.Sg += setsA; compA.Sp += setsB;
+                compB.Sg += setsB; compB.Sp += setsA;
+
+                int puntosA = setsJugados.Sum(s => s.pa);
+                int puntosB = setsJugados.Sum(s => s.pb);
+                compA.Pf += puntosA; compA.Pc += puntosB;
+                compB.Pf += puntosB; compB.Pc += puntosA;
+            }
+
             categoriaId = partido.CategoriaId;
             faseActual = partido.Fase;
             banda = partido.Banda;
