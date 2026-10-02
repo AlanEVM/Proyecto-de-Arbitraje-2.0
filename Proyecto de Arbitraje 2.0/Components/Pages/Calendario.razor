@@ -247,7 +247,7 @@ else
                                 @if (enCancha && !estaCapturando && esArbitro && TorneoActual.CanchasConfirmadas)
                                 {
                                     <div class="partido-acciones-col">
-                                        <button class="btn btn-ghost btn-mini" @onclick='() => Navigation.NavigateTo("/fasefinal/punto-punto/{item.Partido.Id}")'>Punto por punto</button>
+                                        <button class="btn btn-ghost btn-mini" @onclick='() => Navigation.NavigateTo($"/fasefinal/punto-punto/{item.Partido.Id}")'>Punto por punto</button>
                                     </div>
                                 }
                             </div>
