@@ -68,7 +68,7 @@
                             <span class="resultado-puesto @(puesto == "Campeón" ? "campeon" : puesto == "Subcampeón" ? "subcampeon" : "otro")">
                                 @(puesto == "Campeón" ? "🏆 " : "")@puesto
                             </span>
-                            <span class="resultado-nombres">@entrada.Nombres <span class="nota">(@entrada.Municipio)</span></span>
+                            <span class="resultado-nombres multilinea">@entrada.Nombres <span class="nota">(@entrada.Municipio)</span></span>
                         </div>
                     }
                 </div>
@@ -121,21 +121,21 @@
                             {
                                 <div class="resultado-fila">
                                     <span class="resultado-puesto campeon">🏆 Campeón</span>
-                                    <span class="resultado-nombres">@banda.Campeon.Nombres <span class="nota">(@banda.Campeon.Municipio)</span></span>
+                                    <span class="resultado-nombres multilinea">@banda.Campeon.Nombres <span class="nota">(@banda.Campeon.Municipio)</span></span>
                                 </div>
                             }
                             @if (banda.Subcampeon != null)
                             {
                                 <div class="resultado-fila">
                                     <span class="resultado-puesto subcampeon">Subcampeón</span>
-                                    <span class="resultado-nombres">@banda.Subcampeon.Nombres <span class="nota">(@banda.Subcampeon.Municipio)</span></span>
+                                    <span class="resultado-nombres multilinea">@banda.Subcampeon.Nombres <span class="nota">(@banda.Subcampeon.Municipio)</span></span>
                                 </div>
                             }
                             @foreach (var semi in banda.Semifinalistas)
                             {
                                 <div class="resultado-fila">
                                     <span class="resultado-puesto otro">Semifinalista</span>
-                                    <span class="resultado-nombres">@semi.Nombres <span class="nota">(@semi.Municipio)</span></span>
+                                    <span class="resultado-nombres multilinea">@semi.Nombres <span class="nota">(@semi.Municipio)</span></span>
                                 </div>
                             }
                             @if (banda.Campeon == null)
@@ -181,7 +181,7 @@
                             <span class="resultado-puesto @(puesto == "Campeón" ? "campeon" : puesto == "Subcampeón" ? "subcampeon" : "otro")">
                                 @(puesto == "Campeón" ? "🏆 " : "")@puesto
                             </span>
-                            <span class="resultado-nombres">@entrada.Nombres <span class="nota">(@entrada.Municipio)</span></span>
+                            <span class="resultado-nombres multilinea">@entrada.Nombres <span class="nota">(@entrada.Municipio)</span></span>
                         </div>
                     }
                 </div>
@@ -226,7 +226,7 @@
                             <span class="resultado-puesto @(puesto == "Campeón" ? "campeon" : puesto == "Subcampeón" ? "subcampeon" : "otro")">
                                 @(puesto == "Campeón" ? "🏆 " : "")@puesto
                             </span>
-                            <span class="resultado-nombres">@entrada.Nombres <span class="nota">(@entrada.Municipio)</span></span>
+                            <span class="resultado-nombres multilinea">@entrada.Nombres <span class="nota">(@entrada.Municipio)</span></span>
                         </div>
                     }
                 </div>
@@ -381,7 +381,7 @@
         return new PosicionFila
         {
             CompetidorId = c.Id,
-            Nombre = string.Join(" / ", c.CompetidorIntegrantes.Select(ci => ci.Atleta.Nombre)),
+            Nombre = string.Join("\n", c.CompetidorIntegrantes.Select(ci => ci.Atleta.Nombre)),
             Equipo = string.Join(" / ", c.CompetidorIntegrantes.Select(ci => ci.Atleta.Municipio.Nombre).Distinct()),
             Pg = s.Pg,
             Pp = s.Pp,
@@ -438,7 +438,7 @@
                 Posicion = g.First().Posicion,
                 Entrada = new PodioEntrada
                 {
-                    Nombres = string.Join(" / ", g.Select(r => r.Atleta.Nombre)),
+                    Nombres = string.Join("\n", g.Select(r => r.Atleta.Nombre)),
                     Municipio = g.First().Atleta.Municipio?.Nombre ?? ""
                 }
             })
@@ -470,7 +470,7 @@
                 Posicion = g.First().Posicion,
                 Entrada = new PodioEntrada
                 {
-                    Nombres = string.Join(" / ", g.Select(r => r.Atleta.Nombre)),
+                    Nombres = string.Join("\n", g.Select(r => r.Atleta.Nombre)),
                     Municipio = g.First().Atleta.Municipio?.Nombre ?? ""
                 }
             })
@@ -505,7 +505,7 @@
 
     private static PodioEntrada ArmarEntrada(Competidore c) => new PodioEntrada
     {
-        Nombres = string.Join(" / ", c.CompetidorIntegrantes.Select(ci => ci.Atleta.Nombre)),
+        Nombres = string.Join("\n", c.CompetidorIntegrantes.Select(ci => ci.Atleta.Nombre)),
         Municipio = c.CompetidorIntegrantes.Select(ci => ci.Atleta.Municipio != null ? ci.Atleta.Municipio.Nombre : "").FirstOrDefault() ?? ""
     };
 
@@ -665,7 +665,7 @@
                 .Select(c => new PosicionFila
                 {
                     CompetidorId = c.Id,
-                    Nombre = string.Join(" / ", c.CompetidorIntegrantes.Select(ci => ci.Atleta.Nombre)),
+                    Nombre = string.Join("\n", c.CompetidorIntegrantes.Select(ci => ci.Atleta.Nombre)),
                     Equipo = string.Join(" / ", c.CompetidorIntegrantes.Select(ci => ci.Atleta.Municipio.Nombre).Distinct()),
                     Pg = c.Pg,
                     Pp = c.Pp,
@@ -819,7 +819,7 @@
                 @foreach (var f in filas)
                 {
                     <tr>
-                        <td>@f.Nombre</td>
+                        <td class="multilinea">@f.Nombre</td>
                         <td>@f.Equipo</td>
                         <td>@f.Pj</td>
                         <td>@f.Pg</td>
@@ -860,7 +860,7 @@
                 {
                     <tr>
                         <td>@f.PosicionTexto</td>
-                        <td>@f.Nombre</td>
+                        <td class="multilinea">@f.Nombre</td>
                         <td>@f.Equipo</td>
                         <td>@f.Pj</td>
                         <td>@f.Pg</td>

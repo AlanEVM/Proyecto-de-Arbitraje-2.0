@@ -62,14 +62,14 @@
                 {
                     <div class="resultado-fila">
                         <span class="resultado-puesto campeon">🏆 Campeón</span>
-                        <span class="resultado-nombres">@cat.Campeon.Nombres <span class="nota">(@cat.Campeon.Municipio)</span></span>
+                        <span class="resultado-nombres multilinea">@cat.Campeon.Nombres <span class="nota">(@cat.Campeon.Municipio)</span></span>
                     </div>
                 }
                 @if (cat.Subcampeon != null)
                 {
                     <div class="resultado-fila">
                         <span class="resultado-puesto subcampeon">Subcampeón</span>
-                        <span class="resultado-nombres">@cat.Subcampeon.Nombres <span class="nota">(@cat.Subcampeon.Municipio)</span></span>
+                        <span class="resultado-nombres multilinea">@cat.Subcampeon.Nombres <span class="nota">(@cat.Subcampeon.Municipio)</span></span>
                     </div>
                 }
                 @if (cat.Semifinalistas.Any())
@@ -79,7 +79,7 @@
                         <div class="resultado-nombres">
                             @foreach (var entrada in cat.Semifinalistas)
                             {
-                                <div>@entrada.Nombres <span class="nota">(@entrada.Municipio)</span></div>
+                                <div class="multilinea">@entrada.Nombres <span class="nota">(@entrada.Municipio)</span></div>
                             }
                         </div>
                     </div>
@@ -91,7 +91,7 @@
                         <div class="resultado-nombres">
                             @foreach (var entrada in cat.Cuartofinalistas)
                             {
-                                <div>@entrada.Nombres <span class="nota">(@entrada.Municipio)</span></div>
+                                <div class="multilinea">@entrada.Nombres <span class="nota">(@entrada.Municipio)</span></div>
                             }
                         </div>
                     </div>
@@ -103,7 +103,7 @@
                         <div class="resultado-nombres">
                             @foreach (var entrada in cat.Octavofinalistas)
                             {
-                                <div>@entrada.Nombres <span class="nota">(@entrada.Municipio)</span></div>
+                                <div class="multilinea">@entrada.Nombres <span class="nota">(@entrada.Municipio)</span></div>
                             }
                         </div>
                     </div>
@@ -152,10 +152,10 @@
                         @foreach (var a in detalleAtletas)
                         {
                             <tr>
-                                <td>@a.Nombre</td>
+                                <td class="multilinea">@a.Nombre</td>
                                 <td>@a.Municipio</td>
-                                <td>@a.Genero</td>
-                                <td>@a.Anio</td>
+                                <td class="multilinea">@a.Genero</td>
+                                <td class="multilinea">@a.Anio</td>
                                 <td>@a.Grupo</td>
                                 <td><span class="badge @(a.Activo ? "badge-jugado" : "badge-baja")">@(a.Activo ? "Activo" : "Baja")</span></td>
                             </tr>
@@ -208,15 +208,15 @@
                                 {
                                     <td>@p.Jornada</td>
                                 }
-                                <td>@p.NombreA</td>
-                                <td>@p.NombreB</td>
+                                <td class="multilinea">@p.NombreA</td>
+                                <td class="multilinea">@p.NombreB</td>
                                 <td>@p.Set1</td>
                                 @if (!detalleUnSoloSet)
                                 {
                                     <td>@p.Set2</td>
                                     <td>@p.Set3</td>
                                 }
-                                <td>@p.Ganador</td>
+                                <td class="multilinea">@p.Ganador</td>
                                 <td>@p.Cancha</td>
                                 <td>@p.Fecha</td>
                                 <td>@p.Estado</td>
@@ -357,7 +357,7 @@
                     Posicion = g.First().Posicion,
                     Entrada = new PodioEntrada
                     {
-                        Nombres = string.Join(" / ", g.Select(r => r.Atleta.Nombre)),
+                        Nombres = string.Join("\n", g.Select(r => r.Atleta.Nombre)),
                         Municipio = g.First().Atleta.Municipio?.Nombre ?? ""
                     }
                 })
@@ -397,10 +397,10 @@
         {
             detalleAtletas.Add(new AtletaDetalleFila
             {
-                Nombre = string.Join(" / ", c.CompetidorIntegrantes.Select(ci => ci.Atleta.Nombre)),
+                Nombre = string.Join("\n", c.CompetidorIntegrantes.Select(ci => ci.Atleta.Nombre)),
                 Municipio = string.Join(" / ", c.CompetidorIntegrantes.Select(ci => ci.Atleta.Municipio?.Nombre ?? "").Distinct()),
-                Genero = string.Join(" / ", c.CompetidorIntegrantes.Select(ci => ci.Atleta.Genero ?? "")),
-                Anio = string.Join(" / ", c.CompetidorIntegrantes.Select(ci => ci.Atleta.AnioNacimiento?.ToString() ?? "")),
+                Genero = string.Join("\n", c.CompetidorIntegrantes.Select(ci => ci.Atleta.Genero ?? "")),
+                Anio = string.Join("\n", c.CompetidorIntegrantes.Select(ci => ci.Atleta.AnioNacimiento?.ToString() ?? "")),
                 Grupo = c.Grupo?.Letra ?? "",
                 Activo = c.Activo
             });
@@ -437,8 +437,8 @@
 
         detallePartidos = partidos.Select(p =>
         {
-            string nombreA = string.Join(" / ", p.CompetidorA.CompetidorIntegrantes.Select(ci => ci.Atleta.Nombre));
-            string nombreB = string.Join(" / ", p.CompetidorB.CompetidorIntegrantes.Select(ci => ci.Atleta.Nombre));
+            string nombreA = string.Join("\n", p.CompetidorA.CompetidorIntegrantes.Select(ci => ci.Atleta.Nombre));
+            string nombreB = string.Join("\n", p.CompetidorB.CompetidorIntegrantes.Select(ci => ci.Atleta.Nombre));
             var sets = p.SetsPartidos.OrderBy(s => s.NumeroSet).ToList();
 
             return new PartidoDetalleFila

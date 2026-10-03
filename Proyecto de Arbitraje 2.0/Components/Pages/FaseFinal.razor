@@ -206,7 +206,7 @@
 
                 string columnasTemplate = "110px " + string.Join(" ",
                     Enumerable.Range(0, fasesRonda.Count).SelectMany(r =>
-                        r < fasesRonda.Count - 1 ? new[] { "minmax(230px,1fr)", "64px" } : new[] { "minmax(230px,1fr)" }));
+                        r < fasesRonda.Count - 1 ? new[] { "minmax(300px,1fr)", "64px" } : new[] { "minmax(300px,1fr)" }));
 
                 <div class="tarjeta">
                     @if (banda != null)
@@ -269,9 +269,12 @@
                                             string nombreB = string.Join(" / ", p.CompetidorB.CompetidorIntegrantes.Select(ci => ci.Atleta.Nombre));
                                             bool ganoA = p.Estado == "Jugado" && p.GanadorId == p.CompetidorAid;
                                             bool ganoB = p.Estado == "Jugado" && p.GanadorId == p.CompetidorBid;
+                                            bool mostrarAcciones = p.Estado != "Jugado" && !esSoloLectura && CanchasListas && !estaCapturando;
 
                                             <div class="bracket-match @(p.Estado == "Jugado" ? "jugado" : "")">
-                                                <div class="bracket-competidor @(ganoA ? "ganador" : p.Estado == "Jugado" ? "perdedor" : "")">
+                                                <div class="bracket-match-fila">
+                                                <div class="bracket-match-nombres">
+                                                    <div class="bracket-competidor @(ganoA ? "ganador" : p.Estado == "Jugado" ? "perdedor" : "")">
                                                     <span class="bracket-nombre">
                                                         @if (seeds.TryGetValue(p.CompetidorAid, out int seedA) && MostrarSembrado(seedA) && sembradosYaMostrados.Add(p.CompetidorAid))
                                                         {
@@ -294,7 +297,26 @@
                                                     </span>
                                                     @if (p.Estado == "Jugado" && (p.SetsPartidos.Any() || p.EsDefault))
                                                     {
-                                                        <span class="bracket-marcador">@(p.EsDefault ? "WO" : string.Join("/", p.SetsPartidos.OrderBy(s => s.NumeroSet).Select(s => s.PuntosB)))</span>
+                                                                <span class="bracket-marcador">@(p.EsDefault ? "WO" : string.Join("/", p.SetsPartidos.OrderBy(s => s.NumeroSet).Select(s => s.PuntosB)))</span>
+                                                            }
+                                                        </div>
+                                                    </div>
+
+                                                    @if (mostrarAcciones)
+                                                    {
+                                                        <div class="bracket-acciones-match">
+                                                            <div class="bracket-acciones-col">
+                                                                @if (p.Estado == "Pendiente")
+                                                                {
+                                                                    <button class="btn btn-primary btn-mini" @onclick="() => Activar(p.Id)">Activar</button>
+                                                                }
+                                                                <button class="btn btn-primary btn-mini" @onclick="() => AbrirCaptura(p.Id)">Capturar</button>
+                                                            </div>
+                                                            <div class="bracket-acciones-col">
+                                                                <button class="btn btn-ghost btn-mini" @onclick="() => MarcarDefault(p.Id, p.CompetidorAid, nombreA)" title="@nombreA gana por default">WO A</button>
+                                                                <button class="btn btn-ghost btn-mini" @onclick="() => MarcarDefault(p.Id, p.CompetidorBid, nombreB)" title="@nombreB gana por default">WO B</button>
+                                                            </div>
+                                                        </div>
                                                     }
                                                 </div>
 
@@ -317,18 +339,6 @@
                                                     <div style="margin-top:8px;">
                                                         <button class="btn btn-primary btn-mini" @onclick="GuardarResultado">Guardar</button>
                                                         <button class="btn btn-ghost btn-mini" @onclick="() => partidoCapturandoId = null">Cancelar</button>
-                                                    </div>
-                                                }
-                                                else if (p.Estado != "Jugado" && !esSoloLectura)
-                                                {
-                                                    <div class="bracket-acciones-match">
-                                                        @if (p.Estado == "Pendiente")
-                                                        {
-                                                            <button class="btn btn-primary btn-mini" @onclick="() => Activar(p.Id)">Activar</button>
-                                                        }
-                                                        <button class="btn btn-primary btn-mini" @onclick="() => AbrirCaptura(p.Id)">Capturar</button>
-                                                        <button class="btn btn-ghost btn-mini" @onclick="() => MarcarDefault(p.Id, p.CompetidorAid, nombreA)" title="@nombreA gana por default">WO A</button>
-                                                        <button class="btn btn-ghost btn-mini" @onclick="() => MarcarDefault(p.Id, p.CompetidorBid, nombreB)" title="@nombreB gana por default">WO B</button>
                                                     </div>
                                                 }
                                             </div>
