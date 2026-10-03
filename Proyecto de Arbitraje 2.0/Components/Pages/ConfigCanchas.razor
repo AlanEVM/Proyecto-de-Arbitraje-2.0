@@ -98,7 +98,7 @@
                             <div class="cancha-nombre-lado">
                                 @if (ocupada)
                                 {
-                                    <strong>@info!.NombreA</strong>
+                                    <strong class="multilinea">@info!.NombreA</strong>
                                     <span>@info.MunicipioA</span>
                                 }
                                 else
@@ -109,7 +109,7 @@
                             <div class="cancha-nombre-lado">
                                 @if (ocupada)
                                 {
-                                    <strong>@info!.NombreB</strong>
+                                    <strong class="multilinea">@info!.NombreB</strong>
                                     <span>@info.MunicipioB</span>
                                 }
                                 else
@@ -219,9 +219,9 @@
             p => new CanchaInfo
             {
                 Categoria = $"{p.Categoria.Nombre} · {p.Categoria.Modalidad} · {p.Categoria.Rama}",
-                NombreA = string.Join(" / ", p.CompetidorA.CompetidorIntegrantes.Select(ci => ci.Atleta.Nombre)),
+                NombreA = string.Join("\n", p.CompetidorA.CompetidorIntegrantes.Select(ci => ci.Atleta.Nombre)),
                 MunicipioA = string.Join(" / ", p.CompetidorA.CompetidorIntegrantes.Select(ci => ci.Atleta.Municipio.Nombre).Distinct()),
-                NombreB = string.Join(" / ", p.CompetidorB.CompetidorIntegrantes.Select(ci => ci.Atleta.Nombre)),
+                NombreB = string.Join("\n", p.CompetidorB.CompetidorIntegrantes.Select(ci => ci.Atleta.Nombre)),
                 MunicipioB = string.Join(" / ", p.CompetidorB.CompetidorIntegrantes.Select(ci => ci.Atleta.Municipio.Nombre).Distinct()),
                 EsFaseFinal = p.Fase != "Grupos" && p.Fase != "Liga",
                 Fase = p.Fase

@@ -151,7 +151,7 @@
     {
         Id = c.Id,
         Nombre = string.Join(" / ", c.CompetidorIntegrantes.Select(ci => ci.Atleta.Nombre)),
-        Equipo = string.Join(" / ", c.CompetidorIntegrantes.Select(ci => ci.Atleta.Municipio.Abreviacion).Distinct())
+        Equipo = string.Join(" / ", c.CompetidorIntegrantes.Select(ci => ci.Atleta.Municipio.Nombre).Distinct())
     };
 
     private async Task CargarGrupos()

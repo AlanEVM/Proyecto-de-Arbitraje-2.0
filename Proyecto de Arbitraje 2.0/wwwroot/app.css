@@ -456,6 +456,12 @@ h1:focus {
         background: #F1EEE5;
     }
 
+/* Si una tabla no cabe en su tarjeta, se desliza dentro de ella en lugar de salirse */
+.tarjeta:has(.tabla-limpia),
+.tarjeta:has(.tabla) {
+    overflow-x: auto;
+}
+
 .badge {
     display: inline-block;
     font-family: 'Inter', sans-serif;
@@ -1938,4 +1944,19 @@ h1:focus {
     font-size: 1rem;
     text-align: center;
     box-sizing: border-box;
+}
+
+@media (max-width: 1100px) {
+    .tabla-limpia th,
+    .tabla-limpia td {
+        padding: 8px 6px;
+    }
+
+    .tabla-limpia {
+        font-size: 0.86rem;
+    }
+}
+
+.multilinea {
+    white-space: pre-line;
 }

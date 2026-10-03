@@ -151,7 +151,7 @@ public class ExportService
     private async Task HojaAtletasAsync(XLWorkbook wb, TorneoContext db, int torneoId)
     {
         var ws = wb.Worksheets.Add("Atletas");
-        Encabezado(ws, "Categoría", "Modalidad", "Rama", "Grupo", "Nombre", "Municipio", "Género", "Año Nacimiento", "Compañero(s)", "Estado");
+        Encabezado(ws, "Categoría", "Modalidad", "Rama", "Grupo", "Nombre", "Municipio", "Género", "Año Nacimiento", "Estado");
 
         var competidores = await db.Competidores
             .Where(c => c.Categoria.TorneoId == torneoId)
@@ -161,35 +161,37 @@ public class ExportService
             .ToListAsync();
 
         int fila = 2;
+
         var porCategoria = competidores
             .OrderBy(c => c.Categoria.Nombre).ThenBy(c => c.Categoria.Modalidad).ThenBy(c => c.Categoria.Rama).ThenBy(c => c.CategoriaId)
             .GroupBy(c => c.CategoriaId);
 
         foreach (var grupoCat in porCategoria)
         {
-            BandaCategoria(ws, ref fila, 10, grupoCat.First().Categoria);
+            BandaCategoria(ws, ref fila, 9, grupoCat.First().Categoria);
 
-            foreach (var c in grupoCat)
+            foreach (var c in grupoCat.OrderBy(x => x.Grupo?.Letra ?? "").ThenBy(x => x.Id))
             {
-                foreach (var integrante in c.CompetidorIntegrantes)
-                {
-                    var atleta = integrante.Atleta;
-                    string companeros = string.Join(" / ", c.CompetidorIntegrantes
-                        .Where(ci => ci.AtletaId != atleta.Id)
-                        .Select(ci => ci.Atleta.Nombre));
+                var integrantes = c.CompetidorIntegrantes.ToList();
+                bool esMixto = c.Categoria.Rama == "Mixto";
 
-                    ws.Cell(fila, 1).Value = c.Categoria.Nombre;
-                    ws.Cell(fila, 2).Value = c.Categoria.Modalidad;
-                    ws.Cell(fila, 3).Value = c.Categoria.Rama;
-                    ws.Cell(fila, 4).Value = c.Grupo?.Letra ?? "";
-                    ws.Cell(fila, 5).Value = atleta.Nombre;
-                    ws.Cell(fila, 6).Value = atleta.Municipio?.Nombre ?? "";
-                    ws.Cell(fila, 7).Value = atleta.Genero ?? "";
-                    ws.Cell(fila, 8).Value = atleta.AnioNacimiento?.ToString() ?? "";
-                    ws.Cell(fila, 9).Value = companeros;
-                    ws.Cell(fila, 10).Value = c.Activo ? "Activo" : "Baja";
-                    fila++;
-                }
+                string nombres = string.Join(" / ", integrantes.Select(ci => ci.Atleta.Nombre));
+                string municipios = string.Join(" / ", integrantes.Select(ci => ci.Atleta.Municipio?.Nombre ?? "").Distinct());
+                string anios = string.Join(" / ", integrantes.Select(ci => ci.Atleta.AnioNacimiento?.ToString() ?? "-"));
+                string generos = esMixto
+                    ? string.Join(" / ", integrantes.Select(ci => ci.Atleta.Genero ?? "-"))
+                    : string.Join(" / ", integrantes.Select(ci => ci.Atleta.Genero ?? "").Where(g => g != "").Distinct());
+
+                ws.Cell(fila, 1).Value = c.Categoria.Nombre;
+                ws.Cell(fila, 2).Value = c.Categoria.Modalidad;
+                ws.Cell(fila, 3).Value = c.Categoria.Rama;
+                ws.Cell(fila, 4).Value = c.Grupo?.Letra ?? "";
+                ws.Cell(fila, 5).Value = nombres;
+                ws.Cell(fila, 6).Value = municipios;
+                ws.Cell(fila, 7).Value = generos;
+                ws.Cell(fila, 8).Value = anios;
+                ws.Cell(fila, 9).Value = c.Activo ? "Activo" : "Baja";
+                fila++;
             }
         }
     }
@@ -483,16 +485,16 @@ public class ExportService
 
     private static IContainer Celda(IContainer c, bool lineaGruesaAbajo = false, bool sombreado = false)
     {
-        var celda = c.Border(0.5f).BorderBottom(lineaGruesaAbajo ? 2f : 0.5f).BorderColor(Colors.Grey.Darken3)
-                     .MinHeight(17).AlignCenter().AlignMiddle();
-        return sombreado ? celda.Background(Colors.Grey.Lighten3) : celda;
+        var celda = c.Border(0.5f).BorderBottom(lineaGruesaAbajo ? 2f : 0.5f).BorderColor(Colors.Grey.Darken3);
+        if (sombreado) celda = celda.Background(Colors.Grey.Lighten3);
+        return celda.MinHeight(17).AlignCenter().AlignMiddle();
     }
 
     private static IContainer CeldaNombre(IContainer c, bool lineaGruesaAbajo = false, bool sombreado = false)
     {
-        var celda = c.Border(0.5f).BorderBottom(lineaGruesaAbajo ? 2f : 0.5f).BorderColor(Colors.Grey.Darken3)
-                     .MinHeight(17).PaddingLeft(3).AlignLeft().AlignMiddle();
-        return sombreado ? celda.Background(Colors.Grey.Lighten3) : celda;
+        var celda = c.Border(0.5f).BorderBottom(lineaGruesaAbajo ? 2f : 0.5f).BorderColor(Colors.Grey.Darken3);
+        if (sombreado) celda = celda.Background(Colors.Grey.Lighten3);
+        return celda.MinHeight(17).PaddingLeft(3).AlignLeft().AlignMiddle();
     }
 
     private static void CuadroSets(IContainer c, int sets, bool sombreado = false)

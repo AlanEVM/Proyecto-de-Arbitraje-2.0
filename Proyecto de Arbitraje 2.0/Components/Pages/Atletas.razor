@@ -66,13 +66,13 @@
                                     {
                                         <div class="grupo-columna-atleta">
                                             <div>
-                                                @at1.NombreAtleta 
+                                                <span class="multilinea">@at1.NombreAtleta</span>
                                                 @if (!at1.Activo)
                                                 {
                                                     <span class="badge badge-baja" style="margin-left: 4px;">Baja</span>
                                                 }
                                             </div>
-                                            <div class="nota" style="font-size:0.8rem;">
+                                            <div class="nota multilinea" style="font-size:0.8rem;">
                                                 @at1.NombreMunicipio
                                             </div>
                                         </div>
@@ -88,13 +88,13 @@
                                     {
                                         <div class="grupo-columna-atleta">
                                             <div>
-                                                @at1.NombreAtleta
+                                                <span class="multilinea">@at1.NombreAtleta</span>
                                                 @if (!at1.Activo)
                                                 {
                                                     <span class="badge badge-baja" style="margin-left:4px;">Baja</span>
                                                 }
                                             </div>
-                                            <div class="nota" style="font-size:0.8rem;">
+                                            <div class="nota multilinea" style="font-size:0.8rem;">
                                                 @at1.NombreMunicipio
                                             </div>
                                         </div>
@@ -118,9 +118,9 @@
                                 @foreach (var at1 in competidoresCat)
                                 {
                                     <tr>
-                                        <td>@at1.NombreAtleta</td>
-                                        <td>@at1.NombreGenero</td>
-                                        <td>@at1.NombreAnioNacimiento</td>
+                                        <td class="multilinea">@at1.NombreAtleta</td>
+                                        <td class="multilinea">@at1.NombreGenero</td>
+                                        <td class="multilinea">@at1.NombreAnioNacimiento</td>
                                         <td><span class="badge @(at1.Activo ? "badge-jugado" : "badge-baja")">@(at1.Activo ? "Activo" : "Baja")</span></td>
                                     </tr>
                                 }
@@ -141,8 +141,8 @@
                                 @foreach (var at1 in competidoresCat)
                                 {
                                     <tr>
-                                        <td>@at1.NombreAtleta</td>
-                                        <td>@at1.NombreMunicipio</td>
+                                        <td class="multilinea">@at1.NombreAtleta</td>
+                                        <td class="multilinea">@at1.NombreMunicipio</td>
                                         <td><span class="badge @(at1.Activo ? "badge-jugado" : "badge-baja")">@(at1.Activo ? "Activo" : "Baja")</span></td>
                                     </tr>
                                 }
@@ -199,10 +199,10 @@
         todos = datos.Select(d => new CompetidorFila
         {
             CategoriaId = d.CategoriaId,
-            NombreAtleta = string.Join(" / ", d.Integrantes.Select(i => i.Nombre)),
-            NombreMunicipio = string.Join(" / ", d.Integrantes.Select(i => i.MunicipioNombre)),
-            NombreGenero = string.Join(" / ", d.Integrantes.Select(i => i.Genero == "M" ? "Masculino" : i.Genero == "F" ? "Femenino" : "-")),
-            NombreAnioNacimiento = string.Join(" / ", d.Integrantes.Select(i => i.AnioNacimiento != null ? i.AnioNacimiento.ToString() : "-")),
+            NombreAtleta = string.Join("\n", d.Integrantes.Select(i => i.Nombre)),
+            NombreMunicipio = string.Join("\n", d.Integrantes.Select(i => i.MunicipioNombre).Distinct()),
+            NombreGenero = string.Join("\n", d.Integrantes.Select(i => i.Genero == "M" ? "Masculino" : i.Genero == "F" ? "Femenino" : "-")),
+            NombreAnioNacimiento = string.Join("\n", d.Integrantes.Select(i => i.AnioNacimiento != null ? i.AnioNacimiento.ToString() : "-")),
             Letra = d.GrupoLetra,
             Activo = d.Activo
         }).ToList();
