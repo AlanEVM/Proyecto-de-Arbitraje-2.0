@@ -740,6 +740,17 @@ public class FaseFinalService
         await IntentarAvanzarRondaAsync(categoriaId, fase, banda);
     }
 
+    private static int PosicionVisual(int posicionReal, int totalPosiciones)
+    {
+        if (totalPosiciones <= 1) return 0;
+        int mitad = totalPosiciones / 2;
+        if (posicionReal < mitad)
+            return PosicionVisual(posicionReal, mitad);
+
+        int posEnMitadInferior = posicionReal - mitad;
+        return totalPosiciones - 1 - PosicionVisual(posEnMitadInferior, mitad);
+    }
+
     private async Task IntentarAvanzarRondaAsync(int categoriaId, string faseActual, int? banda = null)
     {
         using var db = await _factory.CreateDbContextAsync();
@@ -796,6 +807,13 @@ public class FaseFinalService
             {
                 int idA = avanzan[i];
                 int idB = avanzan[i + 1];
+
+                // La llave se dibuja en espejo en la mitad inferior: si el partido que alimenta a A
+                // queda visualmente debajo del que alimenta a B, se intercambian para que quien
+                // viene de la llave de arriba aparezca arriba.
+                if (PosicionVisual(i, avanzan.Count) > PosicionVisual(i + 1, avanzan.Count))
+                    (idA, idB) = (idB, idA);
+
                 bool activoA = competidoresInfo.TryGetValue(idA, out var compA) && compA.Activo;
                 bool activoB = competidoresInfo.TryGetValue(idB, out var compB) && compB.Activo;
 

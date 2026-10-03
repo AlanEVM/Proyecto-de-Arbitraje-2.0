@@ -520,6 +520,15 @@
             return;
         }
 
+        bool puedeEditarFaseFinal = (formato == "GruposFaseFinal" || formato == "Jornadas")
+            && !categoriasFaseFinalIniciadas.Contains(categoriaId);
+
+        if (puedeEditarFaseFinal && editConfigPuntosLimiteFinal < editConfigPuntosJuegoFinal)
+        {
+            mensaje = "El límite de la Fase Final no puede ser menor a los puntos para ganar de la Fase Final.";
+            return;
+        }
+
         if (editConfigEdadRestringida && (editConfigAnioMin == null || editConfigAnioMax == null || editConfigAnioMin > editConfigAnioMax))
         {
             mensaje = "Revisa el rango de años: falta un valor o el mínimo es mayor al máximo.";
