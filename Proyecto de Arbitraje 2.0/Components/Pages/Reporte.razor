@@ -431,6 +431,7 @@
 
         partidos = partidos
             .OrderBy(p => ordenFase.GetValueOrDefault(p.Fase, 9))
+            .ThenBy(p => p.Jornada ?? int.MaxValue)
             .ThenBy(p => p.FechaCaptura ?? DateTime.MaxValue)
             .ThenBy(p => p.OrdenCola)
             .ToList();

@@ -151,7 +151,7 @@ public class ExportService
     private async Task HojaAtletasAsync(XLWorkbook wb, TorneoContext db, int torneoId)
     {
         var ws = wb.Worksheets.Add("Atletas");
-        Encabezado(ws, "Categoría", "Modalidad", "Rama", "Grupo", "Nombre", "Municipio", "Género", "Año Nacimiento", "Estado");
+        Encabezado(ws, "Grupo", "Nombre", "Municipio", "Género", "Año Nacimiento", "Estado");
 
         var competidores = await db.Competidores
             .Where(c => c.Categoria.TorneoId == torneoId)
@@ -168,7 +168,7 @@ public class ExportService
 
         foreach (var grupoCat in porCategoria)
         {
-            BandaCategoria(ws, ref fila, 9, grupoCat.First().Categoria);
+            BandaCategoria(ws, ref fila, 6, grupoCat.First().Categoria);
 
             foreach (var c in grupoCat.OrderBy(x => x.Grupo?.Letra ?? "").ThenBy(x => x.Id))
             {
@@ -182,15 +182,12 @@ public class ExportService
                     ? string.Join(" / ", integrantes.Select(ci => ci.Atleta.Genero ?? "-"))
                     : string.Join(" / ", integrantes.Select(ci => ci.Atleta.Genero ?? "").Where(g => g != "").Distinct());
 
-                ws.Cell(fila, 1).Value = c.Categoria.Nombre;
-                ws.Cell(fila, 2).Value = c.Categoria.Modalidad;
-                ws.Cell(fila, 3).Value = c.Categoria.Rama;
-                ws.Cell(fila, 4).Value = c.Grupo?.Letra ?? "";
-                ws.Cell(fila, 5).Value = nombres;
-                ws.Cell(fila, 6).Value = municipios;
-                ws.Cell(fila, 7).Value = generos;
-                ws.Cell(fila, 8).Value = anios;
-                ws.Cell(fila, 9).Value = c.Activo ? "Activo" : "Baja";
+                ws.Cell(fila, 1).Value = c.Grupo?.Letra ?? "";
+                ws.Cell(fila, 2).Value = nombres;
+                ws.Cell(fila, 3).Value = municipios;
+                ws.Cell(fila, 4).Value = generos;
+                ws.Cell(fila, 5).Value = anios;
+                ws.Cell(fila, 6).Value = c.Activo ? "Activo" : "Baja";
                 fila++;
             }
         }
@@ -199,7 +196,7 @@ public class ExportService
     private async Task HojaCalendarioAsync(XLWorkbook wb, TorneoContext db, int torneoId)
     {
         var ws = wb.Worksheets.Add("Calendario");
-        Encabezado(ws, "Categoría", "Fase", "Grupo/Banda", "Jornada", "Competidor A", "Competidor B",
+        Encabezado(ws, "Fase", "Grupo/Banda", "Jornada", "Competidor A", "Competidor B",
             "Set 1", "Set 2", "Set 3", "Ganador", "Cancha", "Fecha", "Default", "Estado");
 
         var partidos = await db.Partidos
@@ -217,7 +214,7 @@ public class ExportService
         int fila = 2;
         foreach (var grupoCat in partidos.GroupBy(p => p.CategoriaId))
         {
-            BandaCategoria(ws, ref fila, 14, grupoCat.First().Categoria);
+            BandaCategoria(ws, ref fila, 13, grupoCat.First().Categoria);
 
             foreach (var p in grupoCat)
             {
@@ -225,20 +222,19 @@ public class ExportService
                 string nombreB = string.Join(" / ", p.CompetidorB.CompetidorIntegrantes.Select(ci => ci.Atleta.Nombre));
                 var sets = p.SetsPartidos.OrderBy(s => s.NumeroSet).ToList();
 
-                ws.Cell(fila, 1).Value = $"{p.Categoria.Nombre} · {p.Categoria.Modalidad} · {p.Categoria.Rama}";
-                ws.Cell(fila, 2).Value = p.Fase;
-                ws.Cell(fila, 3).Value = p.Grupo?.Letra ?? (p.Banda?.ToString() ?? "");
-                ws.Cell(fila, 4).Value = p.Jornada?.ToString() ?? "";
-                ws.Cell(fila, 5).Value = nombreA;
-                ws.Cell(fila, 6).Value = nombreB;
-                ws.Cell(fila, 7).Value = sets.Count > 0 ? $"{sets[0].PuntosA}-{sets[0].PuntosB}" : "";
-                ws.Cell(fila, 8).Value = sets.Count > 1 ? $"{sets[1].PuntosA}-{sets[1].PuntosB}" : "";
-                ws.Cell(fila, 9).Value = sets.Count > 2 ? $"{sets[2].PuntosA}-{sets[2].PuntosB}" : "";
-                ws.Cell(fila, 10).Value = p.GanadorId == p.CompetidorAid ? nombreA : (p.GanadorId == p.CompetidorBid ? nombreB : "");
-                ws.Cell(fila, 11).Value = p.Cancha?.Numero.ToString() ?? "";
-                ws.Cell(fila, 12).Value = p.FechaCaptura?.ToString("dd/MM/yyyy HH:mm") ?? "";
-                ws.Cell(fila, 13).Value = p.EsDefault ? "Sí" : "No";
-                ws.Cell(fila, 14).Value = p.Estado;
+                ws.Cell(fila, 1).Value = p.Fase;
+                ws.Cell(fila, 2).Value = p.Grupo?.Letra ?? (p.Banda?.ToString() ?? "");
+                ws.Cell(fila, 3).Value = p.Jornada?.ToString() ?? "";
+                ws.Cell(fila, 4).Value = nombreA;
+                ws.Cell(fila, 5).Value = nombreB;
+                ws.Cell(fila, 6).Value = sets.Count > 0 ? $"{sets[0].PuntosA}-{sets[0].PuntosB}" : "";
+                ws.Cell(fila, 7).Value = sets.Count > 1 ? $"{sets[1].PuntosA}-{sets[1].PuntosB}" : "";
+                ws.Cell(fila, 8).Value = sets.Count > 2 ? $"{sets[2].PuntosA}-{sets[2].PuntosB}" : "";
+                ws.Cell(fila, 9).Value = p.GanadorId == p.CompetidorAid ? nombreA : (p.GanadorId == p.CompetidorBid ? nombreB : "");
+                ws.Cell(fila, 10).Value = p.Cancha?.Numero.ToString() ?? "";
+                ws.Cell(fila, 11).Value = p.FechaCaptura?.ToString("dd/MM/yyyy HH:mm") ?? "";
+                ws.Cell(fila, 12).Value = p.EsDefault ? "Sí" : "No";
+                ws.Cell(fila, 13).Value = p.Estado;
                 fila++;
             }
         }
@@ -247,7 +243,7 @@ public class ExportService
     private async Task HojaPosicionesAsync(XLWorkbook wb, TorneoContext db, int torneoId)
     {
         var ws = wb.Worksheets.Add("Posiciones");
-        Encabezado(ws, "Categoría", "Grupo", "Atleta/Pareja", "Equipo", "PJ", "PG", "PP", "SG", "SP", "±S", "PF", "PC", "±P");
+        Encabezado(ws, "Grupo", "Atleta/Pareja", "Equipo", "PJ", "PG", "PP", "SG", "SP", "±S", "PF", "PC", "±P");
 
         var categorias = await db.Categorias
             .Where(c => c.TorneoId == torneoId &&
@@ -310,26 +306,25 @@ public class ExportService
         string nombre = string.Join(" / ", c.CompetidorIntegrantes.Select(ci => ci.Atleta.Nombre));
         string equipo = string.Join(" / ", c.CompetidorIntegrantes.Select(ci => ci.Atleta.Municipio.Nombre).Distinct());
 
-        ws.Cell(fila, 1).Value = $"{cat.Nombre} · {cat.Modalidad} · {cat.Rama}";
-        ws.Cell(fila, 2).Value = grupoTexto;
-        ws.Cell(fila, 3).Value = nombre;
-        ws.Cell(fila, 4).Value = equipo;
-        ws.Cell(fila, 5).Value = c.Pg + c.Pp;   // PJ (nueva)
-        ws.Cell(fila, 6).Value = c.Pg;
-        ws.Cell(fila, 7).Value = c.Pp;
-        ws.Cell(fila, 8).Value = c.Sg;
-        ws.Cell(fila, 9).Value = c.Sp;
-        ws.Cell(fila, 10).Value = c.Sg - c.Sp;
-        ws.Cell(fila, 11).Value = c.Pf;
-        ws.Cell(fila, 12).Value = c.Pc;
-        ws.Cell(fila, 13).Value = c.Pf - c.Pc;
+        ws.Cell(fila, 1).Value = grupoTexto;
+        ws.Cell(fila, 2).Value = nombre;
+        ws.Cell(fila, 3).Value = equipo;
+        ws.Cell(fila, 4).Value = c.Pg + c.Pp;   // PJ (nueva)
+        ws.Cell(fila, 5).Value = c.Pg;
+        ws.Cell(fila, 6).Value = c.Pp;
+        ws.Cell(fila, 7).Value = c.Sg;
+        ws.Cell(fila, 8).Value = c.Sp;
+        ws.Cell(fila, 9).Value = c.Sg - c.Sp;
+        ws.Cell(fila, 10).Value = c.Pf;
+        ws.Cell(fila, 11).Value = c.Pc;
+        ws.Cell(fila, 12).Value = c.Pf - c.Pc;
         fila++;
     }
 
     private async Task HojaResultadosFinalesAsync(XLWorkbook wb, TorneoContext db, int torneoId)
     {
         var ws = wb.Worksheets.Add("Resultados Finales");
-        Encabezado(ws, "Categoría", "Puesto", "Nombre(s)");
+        Encabezado(ws, "Puesto", "Nombre(s)");
 
         var historial = await db.RankingHistorials
             .Where(r => r.TorneoId == torneoId)
@@ -351,15 +346,14 @@ public class ExportService
         foreach (var g in historial.GroupBy(r => r.Categoria)
              .OrderBy(g => g.Key.Nombre).ThenBy(g => g.Key.Modalidad).ThenBy(g => g.Key.Rama))
         {
-            BandaCategoria(ws, ref fila, 3, g.Key);
+            BandaCategoria(ws, ref fila, 2, g.Key);
 
             foreach (var pos in g.Select(r => r.Posicion).Distinct().OrderBy(p => p))
             {
                 var nombres = string.Join(" / ", g.Where(r => r.Posicion == pos).Select(r => r.Atleta.Nombre));
 
-                ws.Cell(fila, 1).Value = $"{g.Key.Nombre} · {g.Key.Modalidad} · {g.Key.Rama}";
-                ws.Cell(fila, 2).Value = Etiqueta(pos);
-                ws.Cell(fila, 3).Value = nombres;
+                ws.Cell(fila, 1).Value = Etiqueta(pos);
+                ws.Cell(fila, 2).Value = nombres;
                 fila++;
             }
         }
@@ -694,7 +688,7 @@ public class ExportService
     private async Task HojaRankingAsync(XLWorkbook wb, TorneoContext db, int torneoId)
     {
         var ws = wb.Worksheets.Add("Ranking Otorgado");
-        Encabezado(ws, "Atleta", "Categoría", "Posición", "Puntos Otorgados");
+        Encabezado(ws, "Atleta", "Posición", "Puntos Otorgados");
 
         var historial = await db.RankingHistorials
             .Where(r => r.TorneoId == torneoId)
@@ -706,14 +700,13 @@ public class ExportService
         foreach (var g in historial.GroupBy(r => r.CategoriaId)
              .OrderBy(g => g.First().Categoria.Nombre).ThenBy(g => g.First().Categoria.Modalidad).ThenBy(g => g.First().Categoria.Rama))
         {
-            BandaCategoria(ws, ref fila, 4, g.First().Categoria);
+            BandaCategoria(ws, ref fila, 3, g.First().Categoria);
 
             foreach (var r in g.OrderBy(r => r.Posicion).ThenBy(r => r.Atleta.Nombre))
             {
                 ws.Cell(fila, 1).Value = r.Atleta.Nombre;
-                ws.Cell(fila, 2).Value = $"{r.Categoria.Nombre} · {r.Categoria.Modalidad} · {r.Categoria.Rama}";
-                ws.Cell(fila, 3).Value = r.Posicion;
-                ws.Cell(fila, 4).Value = r.Puntos;
+                ws.Cell(fila, 2).Value = r.Posicion;
+                ws.Cell(fila, 3).Value = r.Puntos;
                 fila++;
             }
         }
