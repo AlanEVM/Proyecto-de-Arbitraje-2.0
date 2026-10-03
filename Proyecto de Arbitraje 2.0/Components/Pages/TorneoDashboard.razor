@@ -84,7 +84,7 @@
                         <div class="progreso-fill" style="width:@PorcentajeAncho(c.PartidosJugados, c.PartidosTotal)"></div>
                     </div>
 
-                    @if ((c.Categoria.Formato == "Jornadas" || c.Categoria.Formato == "RoundRobin") && c.UltimosPartidos.Any())
+                    @if (c.UltimosPartidos.Any())
                     {
                         <details>
                             <summary>Últimos resultados</summary>
@@ -246,7 +246,7 @@
             r.PartidosTotal = ProyectoArbitraje.Services.PartidosProyectados.Calcular(cat, conteosPorGrupo, totalActivos, partidosRondaInicialReales, partidosFaseFinalReales);
             r.PartidosJugados = await db.Partidos.CountAsync(p => p.CategoriaId == cat.Id && p.Estado == "Jugado");
 
-            if (cat.Formato == "Jornadas" || cat.Formato == "RoundRobin")
+            
             {
                 var ultimos = await db.Partidos
                     .Where(p => p.CategoriaId == cat.Id && p.Estado == "Jugado")
