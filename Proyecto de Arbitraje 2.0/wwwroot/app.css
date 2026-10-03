@@ -600,6 +600,7 @@ h1:focus {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
     gap: 16px;
+    align-items: start;
 }
 
 .cat-card {
@@ -784,6 +785,14 @@ h1:focus {
     font-size: 1.15rem;
     font-weight: 700;
     color: var(--sombra);
+}
+
+.partido-vs {
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    color: #5B6B68;
+    margin: 2px 0;
 }
 
 .partido-acciones {
@@ -1054,7 +1063,7 @@ h1:focus {
 
 .bracket-slot {
     align-self: center;
-    min-width: 300px;
+    min-width: var(--ancho-slot);
     transition: transform 0.35s ease, opacity 0.35s ease;
 }
 
@@ -1989,4 +1998,18 @@ h1:focus {
 
 .tabla-limpia td.multilinea {
     white-space: pre;
+}
+
+:root {
+    --ancho-slot: 300px;
+}
+
+@media (max-width: 700px) {
+    :root {
+        --ancho-slot: 380px;
+    }
+
+    .bracket-acciones-match .btn-mini {
+        padding: 6px 10px;
+    }
 }

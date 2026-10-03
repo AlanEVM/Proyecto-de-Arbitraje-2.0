@@ -206,7 +206,7 @@
 
                 string columnasTemplate = "110px " + string.Join(" ",
                     Enumerable.Range(0, fasesRonda.Count).SelectMany(r =>
-                        r < fasesRonda.Count - 1 ? new[] { "minmax(300px,1fr)", "64px" } : new[] { "minmax(300px,1fr)" }));
+                        r < fasesRonda.Count - 1 ? new[] { "minmax(var(--ancho-slot),1fr)", "64px" } : new[] { "minmax(var(--ancho-slot),1fr)" }));
 
                 <div class="tarjeta">
                     @if (banda != null)

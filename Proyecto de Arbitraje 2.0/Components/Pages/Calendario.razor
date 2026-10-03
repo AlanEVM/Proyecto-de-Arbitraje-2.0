@@ -214,11 +214,11 @@ else
                                 <span class="badge badge-en-espera"> · En espera</span>
                             }
                             <p class="partido-meta">@item.Categoria @(item.Grupo != null ? $"· Grupo {item.Grupo}" : "") @(item.Jornada != null ? $"· Jornada {item.Jornada}" : "")</p>
-                            <p class="partido-nombres">
-                                @item.NombreA <span class="partido-equipo">(@item.EquipoA)</span>
-                                &nbsp;vs&nbsp;
-                                @item.NombreB <span class="partido-equipo">(@item.EquipoB)</span>
-                            </p>
+                            <div class="partido-nombres">
+                                <div>@item.NombreA <span class="partido-equipo">(@item.EquipoA)</span></div>
+                                <div class="partido-vs">VS</div>
+                                <div>@item.NombreB <span class="partido-equipo">(@item.EquipoB)</span></div>
+                            </div>
                         </div>
                         @if (!esSoloLectura)
                         {

@@ -102,6 +102,12 @@
                         <label>Cantidad de grupos</label>
                         <input type="number" min="1" max="20" @bind="numeroGrupos" @bind:after="ActualizarGrupos" />
                     </div>
+                    @if (!categoriaActiva.RegistroCerrado)
+                    {
+                        <div class="campo" style="align-self:flex-end;">
+                            <button class="btn btn-ghost" @onclick="ReacomodarPorRanking">Reacomodar por ranking</button>
+                        </div>
+                    }
                 </div>
             </div>
         }
@@ -726,6 +732,71 @@
         await CargarCompetidores();
 
         mensajeExito = $"Grupos actualizados y {ordenados.Count} atletas reacomodados según su ranking.";
+    }
+
+    private async Task ReacomodarPorRanking()
+    {
+        if (categoriaActiva == null) return;
+        if (categoriaActiva.RegistroCerrado) { mensajeError = "El registro de esta categoría está cerrado."; return; }
+
+        using var db = await DbFactory.CreateDbContextAsync();
+
+        bool yaHayPartidos = await db.Partidos.AnyAsync(p => p.CategoriaId == categoriaActiva.Id && p.GrupoId != null);
+        if (yaHayPartidos)
+        {
+            mensajeError = "Esta categoría ya tiene partidos de grupos generados en el calendario. No se puede reacomodar.";
+            return;
+        }
+
+        var gruposFinales = await db.Grupos
+            .Where(g => g.CategoriaId == categoriaActiva.Id)
+            .OrderBy(g => g.Letra)
+            .ToListAsync();
+
+        if (!gruposFinales.Any())
+        {
+            mensajeError = "Esta categoría todavía no tiene grupos.";
+            return;
+        }
+
+        bool confirmado = await JS.InvokeAsync<bool>("confirm",
+            "Esto va a reacomodar a TODOS los atletas activos entre los grupos según su ranking, " +
+            "y se perderán los cambios de grupo hechos manualmente. ¿Continuar?");
+        if (!confirmado) return;
+
+        mensajeError = ""; mensajeExito = "";
+
+        var competidoresActivos = await db.Competidores
+            .Where(c => c.CategoriaId == categoriaActiva.Id && c.Activo)
+            .ToListAsync();
+
+        var conPuntos = new List<(Competidore Competidor, int Puntos)>();
+        foreach (var c in competidoresActivos)
+        {
+            int pts = await CalcularPuntosPreviosAsync(db, c.Id, categoriaActiva);
+            conPuntos.Add((c, pts));
+        }
+
+        var ordenados = conPuntos.OrderByDescending(x => x.Puntos).ToList();
+
+        int n = gruposFinales.Count;
+        var ordenGrupos = new List<int>();
+        int totalRondas = (int)Math.Ceiling((double)ordenados.Count / n);
+        for (int r = 0; r < totalRondas; r++)
+        {
+            var ronda = Enumerable.Range(0, n).ToList();
+            if (r % 2 == 1) ronda.Reverse();
+            ordenGrupos.AddRange(ronda);
+        }
+
+        for (int i = 0; i < ordenados.Count; i++)
+            ordenados[i].Competidor.GrupoId = gruposFinales[ordenGrupos[i]].Id;
+
+        await db.SaveChangesAsync();
+        await CargarGrupos();
+        await CargarCompetidores();
+
+        mensajeExito = $"{ordenados.Count} atletas reacomodados según su ranking.";
     }
 
     private async Task<int?> ElegirGrupoBalanceadoAsync(TorneoContext db, Categoria categoria, int nuevoCompetidorId)
